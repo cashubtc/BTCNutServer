@@ -15,6 +15,41 @@
               :action="pastedTokenPaymentUrl">
             <input type="hidden" name="invoiceId" value="@Model.InvoiceId"/>
             <input type="text" name="token" autofocus="autofocus" class="rounded-pill w-100 btn border-white" placeholder="Enter your cashu token..."/>
+            
+            <!-- PIN Modal -->
+            <div class="modal fade" :id="pinModalId" tabindex="-1" aria-labelledby="pinModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="pinModalLabel">Enter PIN</h5>
+                            <button type="button" class="btn-close" v-on:click="closePinModal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <form v-on:submit.prevent="submitPin">
+                                <input
+                                    ref="pinInput"
+                                    v-model="pinValue"
+                                    type="password"
+                                    inputmode="numeric"
+                                    pattern="[0-9]*"
+                                    maxlength="8"
+                                    autocomplete="off"
+                                    style="font-size: 2rem; text-align: center;"
+                                    class="form-control"
+                                    placeholder="****"
+                                    v-on:keyup.enter="submitPin"
+                                />
+                                <div v-if="pinError" class="text-danger mt-2">{{ pinError }}</div>
+                            </form>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" v-on:click="closePinModal">Cancel</button>
+                            <button type="button" class="btn btn-primary" v-on:click="submitPin" :disabled="!pinValue">Submit</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <button id="payButton"
                     type="submit"
                     class="btn btn-primary rounded-pill w-100 mt-3"
@@ -35,28 +70,145 @@
         components: {
             qrcode: VueQrcode
         },
-        data () {
+        data: function() {
             return {
                 currentTab: undefined,
-                //FIXME: it SHOULD be in the model, but there's already more important payment request. Maybe use AdditionalData dictioanary?
-                
                 pastedTokenPaymentUrl: @Safe.Json(Url.Action(nameof(CashuController.PayByToken), "Cashu")),
-                isSubmitting: false
+                isSubmitting: false,
+                
+                showPinModal: false,
+                pinValue: '',
+                pinError: '',
+                onPinSubmitCallback: null,
+                pinModalId: 'pinModal_' + Math.random().toString(36).substr(2, 9)
             };
         },
-        mounted() {
+        mounted: function() {
+            var self = this;
             this.isSubmitting = false;
-            const form = this.$el.querySelector('#payByTokenForm');
+            
+            var form = this.$el.querySelector('#payByTokenForm');
             if (form) {
-                form.addEventListener('submit', (evt) => {
-                    this.isSubmitting = true;
+                form.addEventListener('submit', function(evt) {
+                    self.isSubmitting = true;
                 });
+            }
+            
+            this.initMobileBridge();
+        },
+        methods: {
+            initMobileBridge: function() {
+                var self = this;
+                
+                window.mobileBridge = {
+                    getPaymentRequest: function() {
+                        var qrContainer = self.$el.querySelector('.qr-container');
+                        return qrContainer ? qrContainer.getAttribute('data-clipboard') : null;
+                    },
+
+                    displayPinInput: function(onSubmit) {
+                        console.log('displayPinInput called from Vue');
+                        self.onPinSubmitCallback = onSubmit;
+                        self.pinValue = '';
+                        self.pinError = '';
+                        self.showPinModal = true;
+                        
+                        self.$nextTick(function() {
+                            var modalElement = self.$el.querySelector('#' + self.pinModalId);
+                            if (modalElement && typeof bootstrap !== 'undefined') {
+                                var modal = new bootstrap.Modal(modalElement);
+                                modal.show();
+                                
+                                setTimeout(function() {
+                                    if (self.$refs.pinInput) {
+                                        self.$refs.pinInput.focus();
+                                    }
+                                }, 500);
+                            } else {
+                                console.error('Modal element not found or Bootstrap not available');
+                            }
+                        });
+                    },
+
+                    closePinInput: function() {
+                        self.closePinModal();
+                    },
+
+                    displayError: function(message) {
+                        self.pinError = message || '';
+                    },
+
+                    submitToken: function(token) {
+                        if (typeof token !== 'string' || !token.startsWith('cashu')) {
+                            self.pinError = 'Error: Invalid token provided.';
+                            return false;
+                        }
+
+                        var tokenInput = self.$el.querySelector('input[name="token"]');
+                        var payButton = self.$el.querySelector('#payButton');
+
+                        if (tokenInput && payButton) {
+                            tokenInput.value = token;
+                            tokenInput.dispatchEvent(new Event('input', { bubbles: true }));
+                            payButton.click();
+                            return true;
+                        }
+
+                        self.pinError = 'Error: Could not find payment form elements.';
+                        return false;
+                    }
+                };
+                
+                console.log('Mobile bridge initialized from Vue component');
+            },
+            
+            submitPin: function() {
+                console.log('submitPin called with:', this.pinValue);
+                
+                if (!this.pinValue.trim()) {
+                    this.pinError = 'Please enter a PIN';
+                    return;
+                }
+                
+                if (this.onPinSubmitCallback) {
+                    console.log('Executing PIN callback...');
+                    try {
+                        this.onPinSubmitCallback(this.pinValue);
+                        console.log('PIN callback executed successfully');
+                    } catch (error) {
+                        console.error('Error executing PIN callback:', error);
+                        this.pinError = 'Error processing PIN';
+                    }
+                } else {
+                    console.error('No PIN callback available');
+                    this.pinError = 'No callback function available';
+                }
+            },
+            
+            closePinModal: function() {
+                console.log('Closing PIN modal');
+                this.showPinModal = false;
+                this.pinValue = '';
+                this.pinError = '';
+                this.onPinSubmitCallback = null;
+                
+                var modalElement = this.$el.querySelector('#' + this.pinModalId);
+                if (modalElement && typeof bootstrap !== 'undefined') {
+                    var modal = bootstrap.Modal.getInstance(modalElement);
+                    if (modal) {
+                        modal.hide();
+                    }
+                }
+            }
+        },
+        
+        beforeDestroy: function() {
+            if (window.mobileBridge) {
+                delete window.mobileBridge;
             }
         }
     });
-    
 </script>
-
 
 <style>
     .separator {
@@ -81,3 +233,5 @@
         margin-left: 10px;
     }
 </style>
+
+<script src="~/vendor/bootstrap/bootstrap.bundle.min.js" asp-append-version="true"></script>
