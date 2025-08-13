@@ -30,7 +30,7 @@ using StoreData = BTCPayServer.Data.StoreData;
 namespace BTCPayServer.Plugins.Cashu.Controllers;
 
 [Route("stores/{storeId}/cashu")]
-[Authorize(Policy = Policies.CanModifyServerSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+[Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
 public class CashuController: Controller
 {
     public CashuController(InvoiceRepository invoiceRepository,
