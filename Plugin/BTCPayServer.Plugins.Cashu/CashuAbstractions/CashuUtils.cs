@@ -13,7 +13,7 @@ using DotNut.ApiModels;
 using NBitcoin;
 using NBitcoin.Secp256k1;
 using DLEQProof = DotNut.DLEQProof;
-
+using DotNut.NUT13;
 namespace BTCPayServer.Plugins.Cashu.CashuAbstractions;
 
 public static class CashuUtils
@@ -237,7 +237,7 @@ public static class CashuUtils
     /// <param name="keysetId">Active keyset id which will sign outputs</param>
     /// <param name="keys">Keys for given KeysetId</param>
     /// <returns>Blank Outputs</returns>
-    public static OutputData CreateBlankOutputs(ulong amount, KeysetId keysetId, Keyset keys)
+    public static OutputData CreateBlankOutputs(ulong amount, KeysetId keysetId, Keyset keys, DotNut.NBitcoin.BIP39.Mnemonic? mnemonic = null, int? counter = null)
     {
         if (amount == 0)
         {
@@ -248,7 +248,7 @@ public static class CashuUtils
 
         // Amount is set for 1, they're blank. Mint will automatically set their amount and sign each by pk corresponding to value
         var amounts = Enumerable.Repeat((ulong)1, count).ToList();
-        return CreateOutputs(amounts, keysetId, keys);
+        return CreateOutputs(amounts, keysetId, keys, mnemonic, counter);
     }
 
     /// <summary>
@@ -259,32 +259,55 @@ public static class CashuUtils
     /// <param name="keys">Keyset for given ID</param>
     /// <returns></returns>
     /// <exception cref="ArgumentOutOfRangeException"></exception>
-    public static OutputData CreateOutputs(List<ulong> amounts, KeysetId keysetId, Keyset keys)
+    public static OutputData CreateOutputs(
+        List<ulong> amounts,
+        KeysetId keysetId,
+        Keyset keys,
+        DotNut.NBitcoin.BIP39.Mnemonic? mnemonic = null,
+        int? counter = null)
     {
-        var blindedMessages = new List<BlindedMessage>();
-        var secrets = new List<DotNut.ISecret>();
-        var blindingFactors = new List<PrivKey>();
-
         if (amounts.Any(a => !keys.Keys.Contains(a)))
-        {
             throw new ArgumentException("Invalid amounts");
+
+        var blindedMessages = new List<BlindedMessage>(amounts.Count);
+        var secrets = new List<DotNut.ISecret>(amounts.Count);
+        var blindingFactors = new List<PrivKey>(amounts.Count);
+
+        Func<DotNut.ISecret> secretFactory;
+        Func<PrivKey> blindingFactorFactory;
+
+        if (mnemonic is not null && counter is int c)
+        {
+            secretFactory = () => mnemonic.DeriveSecret(keysetId, c);
+            blindingFactorFactory = () => new PrivKey(
+                Convert.ToHexString(mnemonic.DeriveBlindingFactor(keysetId, c))
+            );
+        }
+        else
+        {
+            secretFactory = () =>
+            {
+                var bytes = RandomNumberGenerator.GetBytes(32);
+                return new StringSecret(Convert.ToHexString(bytes));
+            };
+
+            blindingFactorFactory = () =>
+            {
+                var bytes = RandomNumberGenerator.GetBytes(32);
+                return new PrivKey(Convert.ToHexString(bytes));
+            };
         }
 
-        foreach (var t in amounts)
+        foreach (var amount in amounts)
         {
-            //secrets
-            //for now create StringSecret. In the future, Nut10Secret may be implemented.
-            var secretBytes = RandomNumberGenerator.GetBytes(32);
-            var secret = new StringSecret(Convert.ToHexString(secretBytes));
+            var secret = secretFactory();
             secrets.Add(secret);
 
-            //blinding factor
-            var r = new PrivKey(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
+            var r = blindingFactorFactory();
             blindingFactors.Add(r);
 
-            //blindedMessage
             var B_ = DotNut.Cashu.ComputeB_(secret.ToCurve(), r);
-            blindedMessages.Add(new BlindedMessage() { Amount = t, B_ = B_, Id = keysetId });
+            blindedMessages.Add(new BlindedMessage() { Amount = amount, B_ = B_, Id = keysetId });
         }
 
         return new OutputData()
@@ -294,6 +317,7 @@ public static class CashuUtils
             Secrets = secrets.ToArray()
         };
     }
+
 
 
     /// <summary>
