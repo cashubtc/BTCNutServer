@@ -4,6 +4,7 @@ using System.Text.Json;
 using BTCPayServer.Plugins.Cashu.Data.Models;
 using DotNut;
 using DotNut.JsonConverters;
+using DotNut.NBitcoin.BIP39;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using ISecret = DotNut.ISecret;
@@ -125,6 +126,28 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
                             c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                             c => c.ToArray()));
             });
+        });
+
+        modelBuilder.Entity<CashuWalletConfig>(entity =>
+        {
+            entity.Property(cwc => cwc.WalletMnemonic)
+                .HasConversion(
+                    m => m.ToString(),
+                    wm => new Mnemonic(wm, Wordlist.English)
+                );
+
+            entity.HasKey(cwc => cwc.StoreId);
+        });
+
+        modelBuilder.Entity<StoreKeysetCounter>(entity =>
+        {
+            entity.Property(skc=>skc.KeysetId)
+                .HasConversion(
+                    ki => ki.ToString(),
+                    ki => new KeysetId(ki.ToString())
+                );
+            
+            entity.HasKey(skc => new {skc.StoreId, skc.KeysetId});
         });
 
     }
