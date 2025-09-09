@@ -395,7 +395,8 @@ public class CashuPaymentService
                     OutputData = meltResponse.BlankOutputs,
                     MeltDetails = new MeltDetails
                     {
-                        Expiry = DateTimeOffset.FromUnixTimeSeconds(meltQuoteResponse.MeltQuote.Expiry),
+                        // if it's null it means it's already paid or expired
+                        Expiry = DateTimeOffset.FromUnixTimeSeconds(meltQuoteResponse.MeltQuote.Expiry ?? DateTime.Now.UnixTimestamp()),
                         LightningInvoiceId = meltQuoteResponse.Invoice!.Id,
                         MeltQuoteId = meltResponse.Quote!.Quote,
                         //Assert status as pending, even if it's paid - lightning invocie has to be paid 
@@ -452,7 +453,7 @@ public class CashuPaymentService
                 OutputData = meltResponse.BlankOutputs,
                 MeltDetails = new MeltDetails
                 {
-                    Expiry = DateTimeOffset.FromUnixTimeSeconds(meltQuoteResponse.MeltQuote.Expiry),
+                    Expiry = DateTimeOffset.FromUnixTimeSeconds(meltQuoteResponse.MeltQuote.Expiry ?? DateTime.Now.UnixTimestamp()),
                     LightningInvoiceId = meltQuoteResponse.Invoice!.Id,
                     MeltQuoteId = meltResponse.Quote!.Quote,
                     //Assert status as pending, even if it's paid - lightning invoice has to be paid 
