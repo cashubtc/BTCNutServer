@@ -5,7 +5,7 @@ using DotNut;
 
 namespace BTCPayServer.Plugins.Cashu.Data.Models;
 
-public class StoredProof : DotNut.Proof
+public class StoredProof : Proof
 {
     public Guid ProofId { get; set; }
     public string StoreId { get; set; }

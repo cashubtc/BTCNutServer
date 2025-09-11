@@ -22,7 +22,8 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
     public DbSet<StoredProof> Proofs { get; set; }
     public DbSet<FailedTransaction> FailedTransactions { get; set; }
     public DbSet<ExportedToken> ExportedTokens { get; set; }
-
+    public DbSet<CashuWalletConfig> CashuWalletConfig { get; set; }
+    public DbSet<StoreKeysetCounter> StoreKeysetCounters { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

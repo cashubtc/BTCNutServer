@@ -23,10 +23,9 @@ using DotNut.ApiModels;
 using Microsoft.AspNetCore.Cors;
 using NBitcoin;
 using Newtonsoft.Json.Linq;
-using InvoiceStatus = BTCPayServer.Client.Models.InvoiceStatus;
 using PubKey = DotNut.PubKey;
 using StoreData = BTCPayServer.Data.StoreData;
-
+using DNBIP39 = DotNut.NBitcoin.BIP39;
 namespace BTCPayServer.Plugins.Cashu.Controllers;
 
 [Route("stores/{storeId}/cashu")]
@@ -55,7 +54,97 @@ public class CashuController: Controller
     private readonly CashuStatusProvider _cashuStatusProvider;
     private readonly CashuPaymentService _cashuPaymentService;
     private readonly CashuDbContextFactory _cashuDbContextFactory;
+    
+    
+    
+    [HttpGet]
+    public async Task<IActionResult> GettingStarted()
+    {
+        var db = _cashuDbContextFactory.CreateContext();
+        if (StoreData == null)
+        {
+            return NotFound();
+        }
+        if (db.CashuWalletConfig.Any(cwc => cwc.StoreId == StoreData.Id))
+        {
+            return NotFound();
+        }
 
+        return View();
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> GettingStarted(bool hasCashuWallet)
+    {
+        if (!hasCashuWallet)
+        {
+            return RedirectToAction(nameof(CreateMnemonic));
+        }
+        // todo for now we don't have option to recover the wallet.
+        return NotFound();
+    }
+    
+    [HttpGet]
+    public async Task<IActionResult> CreateMnemonic()
+    {
+        var db = _cashuDbContextFactory.CreateContext();
+        if (StoreData == null)
+        {
+            return NotFound();
+        }
+        if (db.CashuWalletConfig.Any(cwc => cwc.StoreId == StoreData.Id))
+        {
+            return NotFound();
+        }
+        
+        var mnemonic = new DNBIP39.Mnemonic(DNBIP39.Wordlist.English, DNBIP39.WordCount.Twelve);
+        var walletConfig = new CashuWalletConfig
+        {
+            StoreId = StoreData.Id,
+            WalletMnemonic = mnemonic,
+        };
+        db.CashuWalletConfig.Add(walletConfig);
+        await db.SaveChangesAsync();
+        return Ok();
+    }
+    
+    [HttpGet]
+    public async Task<IActionResult> ConfirmMnemonic()
+    {
+        var db = _cashuDbContextFactory.CreateContext();
+        if (StoreData == null)
+        {
+            return NotFound();
+        }
+        var randomMnemonic =  new DNBIP39.Mnemonic(DNBIP39.Wordlist.English, DNBIP39.WordCount.Twelve);
+        var userMnemonic = db.CashuWalletConfig.Single(cwc => cwc.StoreId == StoreData.Id).WalletMnemonic;
+        if (userMnemonic == null)
+        {
+            return NotFound();
+        }
+
+        var randomList = new List<string>();
+        randomList.AddRange(userMnemonic.Words.Take(4));
+        randomList.AddRange(randomMnemonic.Words.Take(8));
+
+        var rand = new Random();
+        randomList = randomList.OrderBy(x => rand.Next()).ToList();
+        return Ok(randomList);
+    }
+    
+    [HttpPost]
+    public async Task<IActionResult> ConfirmMnemonic(List<string> userChoosenWords )
+    {
+        var db = _cashuDbContextFactory.CreateContext();
+        var userMnemonic = db.CashuWalletConfig.Single(cwc => cwc.StoreId == StoreData.Id).WalletMnemonic;
+
+        if (!Equals(userMnemonic.Words.Take(4), userChoosenWords))
+        {
+            return BadRequest(); // todo handle invalid seed - remove it from db?? idk
+        }
+        
+        return Ok();
+    }
     
     /// <summary>
     /// Api route for fetching current plugin configuration for this store
@@ -92,7 +181,6 @@ public class CashuController: Controller
 
         return View(model);
     }
-
     
     /// <summary>
     /// Api route for setting plugin configuration for this store

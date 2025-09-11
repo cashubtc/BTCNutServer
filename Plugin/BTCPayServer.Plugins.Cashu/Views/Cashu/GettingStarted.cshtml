@@ -1,0 +1,45 @@
+@model TModel
+
+@{
+    Layout = null;
+}
+
+<!DOCTYPE html>
+
+<html>
+<head>
+    <title>Cashu | Getting started</title>
+</head>
+<body>
+<div>
+    <h1>Let's get started</h1>
+    <h3>Add Cashu support to your BTCPayServer in a few quick steps.</h3>
+    
+    <form asp-action="GettingStarted" method="post">
+    <button type="submit" name="hasCashuWallet" value="false" style="all:unset; cursor:pointer;">
+        <h2>I don't have a Cashu wallet</h2>
+        <div>
+            <img/>
+            <div>
+                <h4>Create a new wallet</h4>
+                <p>Generate a brand-new wallet to use.</p>
+            </div>
+        </div>
+    </button>
+    
+    <button type="submit" name="hasCashuWallet" value="true" style="all:unset; cursor:pointer;">
+        <h2>I have a Cashu wallet</h2>
+        <div>
+            <img/> 
+            <div>
+                <h4>Connect an existing wallet</h4>
+                <p>Import an existing Cashu wallet.</p>
+            </div>
+            <img/> 
+        </div>
+    </button>
+    </form>
+    
+</div>
+</body>
+</html>

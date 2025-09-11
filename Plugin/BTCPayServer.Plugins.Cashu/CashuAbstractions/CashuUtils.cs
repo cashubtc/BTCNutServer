@@ -276,7 +276,7 @@ public static class CashuUtils
         Func<DotNut.ISecret> secretFactory;
         Func<PrivKey> blindingFactorFactory;
 
-        if (mnemonic is not null && counter is int c)
+        if (mnemonic is not null && counter is { } c)
         {
             secretFactory = () => mnemonic.DeriveSecret(keysetId, c);
             blindingFactorFactory = () => new PrivKey(

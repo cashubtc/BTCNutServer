@@ -63,7 +63,7 @@ public class CashuWallet
             }
 
             var tokenWorth = Math.Floor(token.SumProofs * singleUnitPrice);
-
+            
             var initialInvoice = await _lightningClient.CreateInvoice(
                 LightMoney.Satoshis(tokenWorth),
                 "initial invoice for melt quote",
