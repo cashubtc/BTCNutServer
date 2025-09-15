@@ -7,6 +7,7 @@ using NBitcoin;
 using NBitcoin.Secp256k1;
 using Xunit;
 using DLEQProof = DotNut.DLEQProof;
+using Mnemonic = DotNut.NBitcoin.BIP39.Mnemonic;
 
 namespace BTCPayserver.Plugins.Cashu.Tests
 {
@@ -18,7 +19,9 @@ namespace BTCPayserver.Plugins.Cashu.Tests
 
         public Keyset testKeyset = JsonSerializer.Deserialize<Keyset>(File.ReadAllText(keysetPath));
 
-        const decimal MAX_DECIMAL = decimal.MaxValue;
+        public Mnemonic testMnemonic =
+            new Mnemonic(
+                "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about");
 
         #region GetCashuHttpClient Tests
 
@@ -468,6 +471,30 @@ namespace BTCPayserver.Plugins.Cashu.Tests
                 Assert.Equal(keysetId, blindedMessage.Id);
             }
         }
+        
+        [Fact]
+        public void CreateOutputs_ValidInputs_Deterministic()
+        {
+            var keyset = JsonSerializer.Deserialize<Keyset>(File.ReadAllText(keysetPath));
+            var keysetId = keyset?.GetKeysetId();
+            var counter = 0;
+            int outputAmount = 3;
+            var amounts = new List<ulong> { 2, 4, 8 };
+            
+            var result = CashuUtils.CreateOutputs(amounts, keysetId, keyset, testMnemonic, counter);
+            
+            Assert.Equal(outputAmount, result.BlindedMessages.Length);
+            Assert.Equal("c6f2a6b45d7c02275d67faa6241a586b430482ffc6e071b9ffdc2e2ec5e30e51", (result.Secrets[0] as StringSecret)?.Secret);
+            Assert.Equal("Ug7tXVrBYgaX0bVg525Z7F5/+2cHgsRxFyVPcc25e2U=", JsonSerializer.Serialize(result.BlindingFactors[0]));
+            Assert.Equal((ulong)2, result.BlindedMessages[0].Amount);
+            Assert.Equal(result.BlindedMessages[0].Id, keysetId);
+            
+            Assert.Equal("b8d8d1e3855a1f6a52032127cb242fc9ecf7ff4f7bdea3f35adefbd6004089b7", (result.Secrets[1] as StringSecret)?.Secret);
+            Assert.Equal("6zkDgADp4NpML/1ZjlWhQkrBCCxYknDnYSPPQA1tQ+A=", JsonSerializer.Serialize(result.BlindingFactors[1]));
+            
+            Assert.Equal("526ade5ff0b71ee36848d6114a821f57081b81a61ae745264cea3b53dacd3ad6", (result.Secrets[2] as StringSecret)?.Secret);
+            Assert.Equal("y/DYqqghgrZKGFlt/KXKdjsHuizywr1lUfxfNJhR3tw=", JsonSerializer.Serialize(result.BlindingFactors[2]));
+        }
 
         [Fact]
         public void CreateOutputs_InvalidAmounts_ThrowsArgumentException()
@@ -476,7 +503,7 @@ namespace BTCPayserver.Plugins.Cashu.Tests
             var keyset = JsonSerializer.Deserialize<Keyset>(File.ReadAllText(keysetPath));
             var keysetId = keyset?.GetKeysetId();
 
-            var amounts = new List<ulong> { 10, 20 }; // Tylko 2 wartości zamiast 3
+            var amounts = new List<ulong> { 10, 20 };
 
             // Act & Assert
             Assert.Throws<ArgumentException>(() =>
@@ -1028,7 +1055,6 @@ namespace BTCPayserver.Plugins.Cashu.Tests
         }
 
         #endregion
-
         
         #region FormatAmount Tests
                 
