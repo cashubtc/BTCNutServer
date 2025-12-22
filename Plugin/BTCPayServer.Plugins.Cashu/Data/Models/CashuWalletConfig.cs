@@ -6,4 +6,5 @@ public class CashuWalletConfig
 {
     public string StoreId { get; set; }
     public Mnemonic WalletMnemonic { get; set; }
+    public bool Verified { get; set; } = false;
 }

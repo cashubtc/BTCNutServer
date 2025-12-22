@@ -23,11 +23,15 @@ using DotNut.ApiModels;
 using Microsoft.AspNetCore.Cors;
 using NBitcoin;
 using Newtonsoft.Json.Linq;
+using DesignTimeDbContextFactory = BTCPayServer.Data.DesignTimeDbContextFactory;
 using PubKey = DotNut.PubKey;
 using StoreData = BTCPayServer.Data.StoreData;
 using DNBIP39 = DotNut.NBitcoin.BIP39;
 namespace BTCPayServer.Plugins.Cashu.Controllers;
 
+// todo this entire controler is too fat. it should be separated into few smaller components
+// also this route is too generic for everything. should separate wallet from onboarding,
+// the same applies for payment stuff
 [Route("stores/{storeId}/cashu")]
 [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
 public class CashuController: Controller
@@ -37,7 +41,8 @@ public class CashuController: Controller
         PaymentMethodHandlerDictionary handlers,
         CashuStatusProvider cashuStatusProvider,
         CashuPaymentService cashuPaymentService,
-        CashuDbContextFactory cashuDbContextFactory)
+        CashuDbContextFactory cashuDbContextFactory,
+        RestoreService restoreService)
     {
         _invoiceRepository = invoiceRepository;
         _storeRepository = storeRepository;
@@ -45,6 +50,7 @@ public class CashuController: Controller
         _cashuDbContextFactory = cashuDbContextFactory;
         _cashuStatusProvider = cashuStatusProvider;
         _handlers = handlers;
+        _restoreService = restoreService;
     }
     private StoreData StoreData => HttpContext.GetStoreData();
     
@@ -54,37 +60,56 @@ public class CashuController: Controller
     private readonly CashuStatusProvider _cashuStatusProvider;
     private readonly CashuPaymentService _cashuPaymentService;
     private readonly CashuDbContextFactory _cashuDbContextFactory;
+    private readonly RestoreService _restoreService;
     
+    /*
+     * ================================
+     *      Onboarding process
+     * ================================
+     */
     
-    
-    [HttpGet]
+    [HttpGet("getting-started")]
     public async Task<IActionResult> GettingStarted()
     {
         var db = _cashuDbContextFactory.CreateContext();
+        if (StoreData == null || db.CashuWalletConfig.Any(cwc => cwc.StoreId == StoreData.Id))
+        {
+            return NotFound();
+        }
+
+        var model = new GettingStartedViewModel()
+        {
+            StoreId = StoreData.Id,
+        };
+
+        return View("Onboarding/GettingStarted", model);
+    }
+
+    [HttpGet("restore-wallet")]
+    public async Task<IActionResult> RestoreFromMnemonic()
+    {
+        return View("Onboarding/RestoreFromMnemonic");
+    }
+    
+    [HttpPost("restore-wallet")]
+    public async Task<IActionResult> Restore(WalletRestoreViewModel model)
+    {
         if (StoreData == null)
         {
             return NotFound();
         }
-        if (db.CashuWalletConfig.Any(cwc => cwc.StoreId == StoreData.Id))
-        {
-            return NotFound();
-        }
-
-        return View();
+        var jobId = _restoreService.QueueRestore(StoreData.Id, model.MintUrls, model.Mnemonic);
+        return View("Onboarding/RestoreProgress", jobId);
     }
 
-    [HttpPost]
-    public async Task<IActionResult> GettingStarted(bool hasCashuWallet)
+    [HttpGet("/cashu/restore-status")]
+    public async Task<IActionResult> RestoreStatus(string jobId)
     {
-        if (!hasCashuWallet)
-        {
-            return RedirectToAction(nameof(CreateMnemonic));
-        }
-        // todo for now we don't have option to recover the wallet.
-        return NotFound();
+        var status = _restoreService.GetRestoreStatus(jobId);
+        return Ok(status);
     }
     
-    [HttpGet]
+    [HttpGet("create-mnemonic")]
     public async Task<IActionResult> CreateMnemonic()
     {
         var db = _cashuDbContextFactory.CreateContext();
@@ -92,9 +117,19 @@ public class CashuController: Controller
         {
             return NotFound();
         }
-        if (db.CashuWalletConfig.Any(cwc => cwc.StoreId == StoreData.Id))
+        // in case of user coming back... 
+        var existingMnemonic = await db.CashuWalletConfig.SingleOrDefaultAsync(cwc => cwc.StoreId == StoreData.Id);
+        if (existingMnemonic != null)
         {
-            return NotFound();
+            var existingModel = new Models.StoreViewModels.RecoverySeedBackupViewModel()
+            {
+                CryptoCode = "CASHU",
+                IsStored = true,
+                Mnemonic = existingMnemonic.WalletMnemonic.ToString(),
+                RequireConfirm = true,
+                ReturnUrl = Url.Action(nameof(ConfirmMnemonic), new { storeId = StoreData.Id })
+            };
+            return View("Views/Cashu/Onboarding/CreateMnemonic",existingModel);
         }
         
         var mnemonic = new DNBIP39.Mnemonic(DNBIP39.Wordlist.English, DNBIP39.WordCount.Twelve);
@@ -105,10 +140,19 @@ public class CashuController: Controller
         };
         db.CashuWalletConfig.Add(walletConfig);
         await db.SaveChangesAsync();
-        return Ok();
+
+        var model = new Models.StoreViewModels.RecoverySeedBackupViewModel()
+        {
+            CryptoCode = "CASHU",
+            IsStored = true,
+            Mnemonic = walletConfig.WalletMnemonic.ToString(),
+            RequireConfirm = true,
+            ReturnUrl = Url.Action(nameof(ConfirmMnemonic), new { storeId = StoreData.Id })
+        };
+        return View("Onboarding/CreateMnemonic",model);
     }
     
-    [HttpGet]
+    [HttpGet("confirm-mnemonic")]
     public async Task<IActionResult> ConfirmMnemonic()
     {
         var db = _cashuDbContextFactory.CreateContext();
@@ -117,34 +161,68 @@ public class CashuController: Controller
             return NotFound();
         }
         var randomMnemonic =  new DNBIP39.Mnemonic(DNBIP39.Wordlist.English, DNBIP39.WordCount.Twelve);
-        var userMnemonic = db.CashuWalletConfig.Single(cwc => cwc.StoreId == StoreData.Id).WalletMnemonic;
+        var userMnemonic = await db.CashuWalletConfig.SingleOrDefaultAsync(cwc => cwc.StoreId == StoreData.Id);
         if (userMnemonic == null)
         {
             return NotFound();
         }
-
-        var randomList = new List<string>();
-        randomList.AddRange(userMnemonic.Words.Take(4));
-        randomList.AddRange(randomMnemonic.Words.Take(8));
-
+        
         var rand = new Random();
-        randomList = randomList.OrderBy(x => rand.Next()).ToList();
-        return Ok(randomList);
+        var randomList = new List<string>();
+        randomList.AddRange(userMnemonic.WalletMnemonic.Words.Take(4));
+        randomList.AddRange(randomMnemonic.Words.Take(8));
+        randomList = randomList.OrderBy(_ => rand.Next()).ToList();
+    
+        var model = new ConfirmMnemonicViewModel
+        {
+            Mnemonic = userMnemonic.WalletMnemonic.ToString(),
+            Words = randomList,
+            ViewMnemonicUrl =  Url.Action(nameof(ConfirmMnemonic))
+        };
+        
+        return View("Onboarding/ConfirmMnemonic", model);
     }
     
-    [HttpPost]
-    public async Task<IActionResult> ConfirmMnemonic(List<string> userChoosenWords )
+    [HttpPost("confirm-mnemonic")]
+    public async Task<IActionResult> ConfirmMnemonic(string fourWordChunk)
     {
         var db = _cashuDbContextFactory.CreateContext();
-        var userMnemonic = db.CashuWalletConfig.Single(cwc => cwc.StoreId == StoreData.Id).WalletMnemonic;
-
-        if (!Equals(userMnemonic.Words.Take(4), userChoosenWords))
+        var userMnemonic =await  db.CashuWalletConfig.SingleOrDefaultAsync(cwc => cwc.StoreId == StoreData.Id);
+        var validChunk = string.Join("", userMnemonic.WalletMnemonic.Words.Take(4));
+        if (!Equals(validChunk, fourWordChunk))
         {
-            return BadRequest(); // todo handle invalid seed - remove it from db?? idk
+            TempData[WellKnownTempData.ErrorMessage] = $"Invalid words chosen. Try again";
+            return RedirectToAction(nameof(ConfirmMnemonic), new { storeId = StoreData.Id });
         }
-        
-        return Ok();
+    
+        userMnemonic.Verified = true;
+        await db.SaveChangesAsync();
+        TempData[WellKnownTempData.SuccessMessage] = $"Wallet created and verified successfully!";
+        var hasLightning = StoreData.IsLightningEnabled("BTC");
+        if (!hasLightning)
+        {
+            return RedirectToAction(nameof(InitWithoutLightning),new {storeId = StoreData.Id});
+        }
+        return RedirectToAction(nameof(StoreConfig), new { storeId = StoreData.Id });
     }
+
+    [HttpGet("init-without-lightning")]
+    public async Task<IActionResult> InitWithoutLightning()
+    {
+        var model = new CashuInitWithoutLightningViewModel
+        {
+            TrustedMintsUrls = string.Empty,
+            PaymentAcceptanceModel = CashuPaymentModel.TrustedMintsOnly,
+            ReturnUrl =  Url.Action(nameof(StoreConfig), new { storeId = StoreData.Id })
+        };
+        return View("Views/Cashu/Onboarding/InitWithoutLightning", model);
+    }
+    
+    /*
+     * ==================================
+     *  Store Configuration and Settings
+     * ==================================
+     */
     
     /// <summary>
     /// Api route for fetching current plugin configuration for this store
@@ -152,31 +230,35 @@ public class CashuController: Controller
     [HttpGet]
     public async Task<IActionResult> StoreConfig()
     {
-
         var cashuPaymentMethodConfig =
             StoreData.GetPaymentMethodConfig<CashuPaymentMethodConfig>(CashuPlugin.CashuPmid, _handlers);
+        {
+            await using var db = _cashuDbContextFactory.CreateContext();
+            var config = db.CashuWalletConfig.FirstOrDefault(cwc => cwc.StoreId == StoreData.Id);
+            if (config == null)
+            {
+                return RedirectToAction(nameof(GettingStarted), new { storeId = StoreData.Id });
+            }
 
+            if (!config.Verified)
+            {
+                return RedirectToAction(nameof(ConfirmMnemonic), new { storeId = StoreData.Id });
+            }
+        }
+        
         CashuStoreViewModel model = new CashuStoreViewModel();
-
+        model.HasLightningNodeConnected = StoreData.IsLightningEnabled("BTC");
         if (cashuPaymentMethodConfig == null)
         {
             model.Enabled = await _cashuStatusProvider.CashuEnabled(StoreData.Id);
-            model.PaymentAcceptanceModel = CashuPaymentModel.SwapAndHodl;
+            model.PaymentAcceptanceModel = CashuPaymentModel.TrustedMintsOnly;
             model.TrustedMintsUrls = "";
-            model.CustomerFeeAdvance = 0;
-            // 2% of fee can be a lot, but it's usually returned. 
-            model.MaxLightningFee = 2;
-            //I wouldn't advise to set more than 1% of keyset fee... since they're denominated in ppk (1/1000 * unit * input_amount)in tokens unit
-            model.MaxKeysetFee = 1;
         }
         else
         {
             model.Enabled = await _cashuStatusProvider.CashuEnabled(StoreData.Id);
             model.PaymentAcceptanceModel = cashuPaymentMethodConfig.PaymentModel;
             model.TrustedMintsUrls = String.Join("\n", cashuPaymentMethodConfig.TrustedMintsUrls ?? [""]);
-            model.CustomerFeeAdvance = cashuPaymentMethodConfig.FeeConfing.CustomerFeeAdvance;
-            model.MaxLightningFee = cashuPaymentMethodConfig.FeeConfing.MaxLightningFee;
-            model.MaxKeysetFee = cashuPaymentMethodConfig.FeeConfing.MaxKeysetFee;
         }
 
         return View(model);
@@ -190,8 +272,6 @@ public class CashuController: Controller
     {
         var store = StoreData;
         var blob = StoreData.GetStoreBlob();
-        var paymentMethodId = CashuPlugin.CashuPmid;
-
         viewModel.TrustedMintsUrls ??= "";
 
         //trimming trailing slash 
@@ -206,22 +286,16 @@ public class CashuController: Controller
         //If lighting isn't configured - don't allow user to set meltImmediately.
         var paymentMethodConfig = new CashuPaymentMethodConfig()
         {
-            PaymentModel = lightningEnabled ? viewModel.PaymentAcceptanceModel : CashuPaymentModel.SwapAndHodl,
+            PaymentModel = lightningEnabled ? viewModel.PaymentAcceptanceModel : CashuPaymentModel.TrustedMintsOnly,
             TrustedMintsUrls = parsedTrustedMintsUrls,
-            FeeConfing = new CashuFeeConfig
-            {
-                CustomerFeeAdvance = viewModel.CustomerFeeAdvance,
-                MaxLightningFee = viewModel.MaxLightningFee,
-                MaxKeysetFee = viewModel.MaxKeysetFee,
-            }
         };
 
-        blob.SetExcluded(paymentMethodId, !viewModel.Enabled);
+        blob.SetExcluded(CashuPlugin.CashuPmid, !viewModel.Enabled);
 
-        StoreData.SetPaymentMethodConfig(_handlers[paymentMethodId], paymentMethodConfig);
+        StoreData.SetPaymentMethodConfig(_handlers[CashuPlugin.CashuPmid], paymentMethodConfig);
         store.SetStoreBlob(blob);
         await _storeRepository.UpdateStore(store);
-        if (viewModel.PaymentAcceptanceModel == CashuPaymentModel.MeltImmediately && !lightningEnabled)
+        if (viewModel.PaymentAcceptanceModel == CashuPaymentModel.HoldWhenTrusted && !lightningEnabled)
         {
             TempData[WellKnownTempData.ErrorMessage] = "Can't use this payment model. Lightning wallet is disabled.";
         }
@@ -230,238 +304,57 @@ public class CashuController: Controller
             TempData[WellKnownTempData.SuccessMessage] = "Config Saved Successfully";
         }
 
-        return RedirectToAction("StoreConfig", new { storeId = store.Id, paymentMethodId });
+        return RedirectToAction("StoreConfig", new { storeId = store.Id, CashuPlugin.CashuPmid });
     }
 
-    /// <summary>
-    /// Api route for fetching current store Cashu Wallet view - All stored proofs grouped by mint and unit which can be exported.
-    /// </summary>
-    /// <returns></returns>
-    [HttpGet("wallet")]
-    public async Task<IActionResult> CashuWallet()
+    [HttpGet("settings")]
+    public async Task<IActionResult> Settings()
     {
-        await using var db = _cashuDbContextFactory.CreateContext();
-
-        var mints = await db.Mints.Select(m => m.Url).ToListAsync();
-        var proofsWithUnits = new List<(string Mint, string Unit, ulong Amount)>();
-        
-        var unavailableMints = new List<string>();
-        
-        foreach (var mint in mints)
+        var storeConfig = StoreData.GetPaymentMethodConfig<CashuPaymentMethodConfig>(CashuPlugin.CashuPmid, _handlers);
+        if (storeConfig == null)
         {
-            try
-            { 
-                var cashuHttpClient = CashuUtils.GetCashuHttpClient(mint); 
-                var keysets = await cashuHttpClient.GetKeysets();
-
-               var localProofs = await db.Proofs
-                   .Where(p => keysets.Keysets.Select(k => k.Id).Contains(p.Id) &&
-                               p.StoreId == StoreData.Id &&
-                                 !db.FailedTransactions.Any(ft => ft.UsedProofs.Contains(p)
-                                     )).ToListAsync();
-               
-                foreach (var proof in localProofs)
-                {
-                    var matchingKeyset = keysets.Keysets.FirstOrDefault(k => k.Id == proof.Id);
-                    if (matchingKeyset != null)
-                    {
-                        proofsWithUnits.Add((Mint: mint, matchingKeyset.Unit, proof.Amount));
-                    }
-                }
-            }
-            catch (Exception)
+            return RedirectToAction(nameof(StoreConfig), new { storeId = StoreData.Id });
+        }
+        var feeConfig =
+            storeConfig.FeeConfing ?? new CashuFeeConfig
             {
-                unavailableMints.Add(mint);
-            }
-        }
-
-        var groupedProofs = proofsWithUnits
-            .GroupBy(p => new { p.Mint, p.Unit })
-            .Select(group => new
-                {
-                 group.Key.Mint,
-                 group.Key.Unit,
-                 Amount = group.Select(x => x.Amount).Sum()
-                }
-            )
-            .OrderByDescending(x => x.Amount)
-            .Select(x => (x.Mint, x.Unit, x.Amount))
-            .ToList();
-        
-        var exportedTokens = db.ExportedTokens.Where(et=>et.StoreId == StoreData.Id).ToList();
-        if (unavailableMints.Any())
+                CustomerFeeAdvance = 0,
+                MaxLightningFee = 0,
+                MaxKeysetFee = 0,
+            };
+        var model = new CashuSettingsViewModel
         {
-            TempData[WellKnownTempData.ErrorMessage] = $"Couldn't load {unavailableMints.Count} mints: {String.Join(", ", unavailableMints)}";
-        }
-        var viewModel = new CashuWalletViewModel {AvaibleBalances = groupedProofs, ExportedTokens = exportedTokens};
-        
-        return View(viewModel);
-    }
-    
-    /// <summary>
-    /// Api route for exporting stored balance for chosen mint and unit
-    /// </summary>
-    /// <param name="mintUrl">Chosen mint url, form which proofs we want to export</param>
-    /// <param name="unit">Chosen unit of token</param>
-    [HttpPost("ExportMintBalance")]
-    public async Task<IActionResult> ExportMintBalance(string mintUrl, string unit)
-    {
-        if (string.IsNullOrWhiteSpace(mintUrl)|| string.IsNullOrWhiteSpace(unit))
-        {
-            TempData[WellKnownTempData.ErrorMessage] = "Invalid mint or unit provided!";
-            return RedirectToAction("CashuWallet", new { storeId = StoreData.Id});
-        }
-        
-        await using var db = _cashuDbContextFactory.CreateContext();
-        List<GetKeysetsResponse.KeysetItemResponse> keysets;
-        try
-        {
-            var cashuWallet = new CashuWallet(mintUrl, unit);
-            keysets = await cashuWallet.GetKeysets();
-            if (keysets == null || keysets.Count == 0)
-            {
-                throw new Exception("No keysets were found.");
-            }
-        }
-        catch (Exception)
-        {
-            TempData[WellKnownTempData.ErrorMessage] = "Couldn't get keysets!";
-            return RedirectToAction("CashuWallet", new { storeId = StoreData.Id});
-        }
- 
-        var selectedProofs = db.Proofs.Where(p=>
-            p.StoreId == StoreData.Id 
-            && keysets.Select(k => k.Id).Contains(p.Id) 
-            //ensure that proof is free and spendable (yeah!)
-            && !db.FailedTransactions.Any(ft => ft.UsedProofs.Contains(p))
-            ).ToList();
-    
-        var createdToken = new CashuToken()
-        {
-            Tokens =
-            [
-                new CashuToken.Token
-                {
-                    Mint = mintUrl,
-                    Proofs = selectedProofs.Select(p => p.ToDotNutProof()).ToList(),
-                }
-            ],
-            Memo = "Cashu Token withdrawn from BTCNutServer",
-            Unit = unit
+            CustomerFeeAdvance = feeConfig.CustomerFeeAdvance,
+            MaxLightningFee = feeConfig.MaxLightningFee,
+            MaxKeysetFee = feeConfig.MaxKeysetFee,
         };
-        
-        var tokenAmount = selectedProofs.Select(p => p.Amount).Sum();
-        var serializedToken = createdToken.Encode();
-    
-        var proofsToRemove = await db.Proofs
-            .Where(p => p.StoreId == StoreData.Id && 
-                        keysets.Select(k => k.Id).Contains(p.Id))
-            .ToListAsync();
-        
-        var exportedTokenEntity = new ExportedToken
-        {
-            SerializedToken = serializedToken,
-            Amount = tokenAmount,
-            Unit = unit,
-            Mint = mintUrl,
-            StoreId = StoreData.Id,
-            IsUsed = false,
-        };
-        var strategy = db.Database.CreateExecutionStrategy();
-        
-        await strategy.ExecuteAsync(async () =>
-        {
-            await using var transaction = await db.Database.BeginTransactionAsync();
-            try
-            {
-                db.Proofs.RemoveRange(proofsToRemove);
-                db.ExportedTokens.Add(exportedTokenEntity);
-                await db.SaveChangesAsync();
-                await transaction.CommitAsync();
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                ViewData[WellKnownTempData.ErrorMessage] = $"Couldn't export";
-                RedirectToAction(nameof(CashuWallet), new { storeId = StoreData.Id });
-            }
-        });
-        return RedirectToAction(nameof(ExportedToken), new { tokenId = exportedTokenEntity.Id });
+
+        return View("Views/Cashu/Settings/FeeSettings", model);
     }
 
-    /// <summary>
-    /// Api route for fetching exported token data
-    /// </summary>
-    /// <param name="tokenId">Stored Token GUID</param>
-    [HttpGet("/Token")]
-    public async Task<IActionResult> ExportedToken(Guid tokenId)
+    [HttpPost("settings")]
+    public async Task<IActionResult> Settings(CashuSettingsViewModel viewModel)
     {
-        
-        var db = _cashuDbContextFactory.CreateContext();
-       
-        var exportedToken = db.ExportedTokens.SingleOrDefault(e => e.Id == tokenId);
-        if (exportedToken == null)
+        var config = StoreData.GetPaymentMethodConfig<CashuPaymentMethodConfig>(CashuPlugin.CashuPmid, _handlers);
+        if (config == null)
         {
-            return BadRequest("Can't find token with provided GUID");
+            // todo propably at this point we should redirect to StoreInit or something like that
+            return RedirectToAction(nameof(GettingStarted), new { storeId = StoreData.Id });
         }
-
-        if (!exportedToken.IsUsed)
-        { 
-            try
-            {
-                var wallet = new CashuWallet(exportedToken.Mint, exportedToken.Unit);
-                var proofs = CashuTokenHelper.Decode(exportedToken.SerializedToken, out _)
-                    .Tokens.SelectMany(t => t.Proofs)
-                    .Distinct()
-                    .ToList();
-                var state = await wallet.CheckTokenState(proofs);
-                if (state == StateResponseItem.TokenState.SPENT)
-                {
-                    exportedToken.IsUsed = true;
-                    db.ExportedTokens.Update(exportedToken);
-                    await db.SaveChangesAsync();
-                }
-            }
-            catch (Exception)
-            {
-                //honestly, there's nothing to do. maybe it'll work next time
-            }
-        }
+        config.FeeConfing.CustomerFeeAdvance = viewModel.CustomerFeeAdvance;
+        config.FeeConfing.MaxLightningFee = viewModel.MaxLightningFee;
+        config.FeeConfing.MaxKeysetFee = viewModel.MaxKeysetFee;
         
-        var model = new ExportedTokenViewModel()
-        {
-            Amount = exportedToken.Amount,
-            Unit = exportedToken.Unit,
-            MintAddress = exportedToken.Mint,
-            Token = exportedToken.SerializedToken,
-        };
-        
-        return View(model);
-    }
-
-    /// <summary>
-    /// Api route for fetching failed transactions list
-    /// </summary>
-    /// <returns></returns>
-    [HttpGet("FailedTransactions")]
-    public async Task<IActionResult> FailedTransactions()
-    {
-        await using var db = _cashuDbContextFactory.CreateContext();
-        //fetch recently failed transactions 
-        var failedTransactions = db.FailedTransactions
-            .Where(ft => ft.StoreId == StoreData.Id)
-            .Include(ft=>ft.UsedProofs)
-            .ToList();
-            
-        return View(failedTransactions);
+        StoreData.SetPaymentMethodConfig(_handlers[CashuPlugin.CashuPmid], config);
+        return View("Views/Cashu/Settings/FeeSettings", viewModel);
     }
     
-    /// <summary>
-    /// Api route for checking failed transaction state.
-    /// </summary>
-    /// <param name="failedTransactionId"></param>
-    /// <returns></returns>
-     [HttpPost("FailedTransactions")]
+     /// <summary> 
+     /// Api route for checking failed transaction state. 
+     /// </summary> 
+     /// <param name="failedTransactionId"></param> 
+     /// <returns></returns>
+     [HttpPost("failed-transactionss")]
      public async Task<IActionResult> PostFailedTransaction(Guid failedTransactionId)
      {
          await using var db = _cashuDbContextFactory.CreateContext();
@@ -551,6 +444,246 @@ public class CashuController: Controller
          return RedirectToAction("FailedTransactions", new { storeId = StoreData.Id});
      }
     
+    /*
+     * ==================================
+     *      Internal Cashu Wallet
+     * ==================================
+     */
+
+    /// <summary>
+    /// Api route for fetching current store Cashu Wallet view - All stored proofs grouped by mint and unit which can be exported.
+    /// </summary>
+    /// <returns></returns>
+    [HttpGet("wallet")]
+    public async Task<IActionResult> CashuWallet()
+    {
+        await using var db = _cashuDbContextFactory.CreateContext();
+        if (!db.CashuWalletConfig.Any(cwc => cwc.StoreId == StoreData.Id))
+        {
+            return RedirectToAction(nameof(GettingStarted), new { storeId = StoreData.Id });;
+        }
+        
+        
+        var mints = await db.Mints.Select(m => m.Url).ToListAsync();
+        var proofsWithUnits = new List<(string Mint, string Unit, ulong Amount)>();
+        
+        var unavailableMints = new List<string>();
+        
+        foreach (var mint in mints)
+        {
+            try
+            { 
+                var cashuHttpClient = CashuUtils.GetCashuHttpClient(mint); 
+                var keysets = await cashuHttpClient.GetKeysets();
+
+               var localProofs = await db.Proofs
+                   .Where(p => keysets.Keysets.Select(k => k.Id).Contains(p.Id) &&
+                               p.StoreId == StoreData.Id &&
+                                 !db.FailedTransactions.Any(ft => ft.UsedProofs.Contains(p)
+                                     )).ToListAsync();
+               
+                foreach (var proof in localProofs)
+                {
+                    var matchingKeyset = keysets.Keysets.FirstOrDefault(k => k.Id == proof.Id);
+                    if (matchingKeyset != null)
+                    {
+                        proofsWithUnits.Add((Mint: mint, matchingKeyset.Unit, proof.Amount));
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                unavailableMints.Add(mint);
+            }
+        }
+
+        var groupedProofs = proofsWithUnits
+            .GroupBy(p => new { p.Mint, p.Unit })
+            .Select(group => new
+                {
+                 group.Key.Mint,
+                 group.Key.Unit,
+                 Amount = group.Select(x => x.Amount).Sum()
+                }
+            )
+            .OrderByDescending(x => x.Amount)
+            .Select(x => (x.Mint, x.Unit, x.Amount))
+            .ToList();
+        
+        var exportedTokens = db.ExportedTokens.Where(et=>et.StoreId == StoreData.Id).ToList();
+        if (unavailableMints.Any())
+        {
+            TempData[WellKnownTempData.ErrorMessage] = $"Couldn't load {unavailableMints.Count} mints: {String.Join(", ", unavailableMints)}";
+        }
+        var viewModel = new CashuWalletViewModel {AvaibleBalances = groupedProofs, ExportedTokens = exportedTokens};
+        
+        return View(viewModel);
+    }
+    
+    /// <summary>
+    /// Api route for exporting stored balance for chosen mint and unit
+    /// </summary>
+    /// <param name="mintUrl">Chosen mint url, form which proofs we want to export</param>
+    /// <param name="unit">Chosen unit of token</param>
+    [HttpPost("export-mint-balance")]
+    public async Task<IActionResult> ExportMintBalance(string mintUrl, string unit)
+    {
+        if (string.IsNullOrWhiteSpace(mintUrl)|| string.IsNullOrWhiteSpace(unit))
+        {
+            TempData[WellKnownTempData.ErrorMessage] = "Invalid mint or unit provided!";
+            return RedirectToAction("CashuWallet", new { storeId = StoreData.Id});
+        }
+        
+        await using var db = _cashuDbContextFactory.CreateContext();
+        List<GetKeysetsResponse.KeysetItemResponse> keysets;
+        try
+        {
+            var cashuWallet = new CashuWallet(mintUrl, unit);
+            keysets = await cashuWallet.GetKeysets();
+            if (keysets == null || keysets.Count == 0)
+            {
+                throw new Exception("No keysets were found.");
+            }
+        }
+        catch (Exception)
+        {
+            TempData[WellKnownTempData.ErrorMessage] = "Couldn't get keysets!";
+            return RedirectToAction("CashuWallet", new { storeId = StoreData.Id});
+        }
+ 
+        var selectedProofs = db.Proofs.Where(p=>
+            p.StoreId == StoreData.Id 
+            && keysets.Select(k => k.Id).Contains(p.Id) 
+            //ensure that proof is free and spendable (yeah!)
+            && !db.FailedTransactions.Any(ft => ft.UsedProofs.Contains(p))
+            ).ToList();
+    
+        var createdToken = new CashuToken()
+        {
+            Tokens =
+            [
+                new CashuToken.Token
+                {
+                    Mint = mintUrl,
+                    Proofs = selectedProofs.Select(p => p.ToDotNutProof()).ToList(),
+                }
+            ],
+            Memo = "Cashu Token withdrawn from BTCNutServer",
+            Unit = unit
+        };
+        
+        var tokenAmount = selectedProofs.Select(p => p.Amount).Sum();
+        var serializedToken = createdToken.Encode();
+    
+        var proofsToRemove = await db.Proofs
+            .Where(p => p.StoreId == StoreData.Id && 
+                        keysets.Select(k => k.Id).Contains(p.Id))
+            .ToListAsync();
+        
+        var exportedTokenEntity = new ExportedToken
+        {
+            SerializedToken = serializedToken,
+            Amount = tokenAmount,
+            Unit = unit,
+            Mint = mintUrl,
+            StoreId = StoreData.Id,
+            IsUsed = false,
+        };
+        var strategy = db.Database.CreateExecutionStrategy();
+        
+        await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            try
+            {
+                db.Proofs.RemoveRange(proofsToRemove);
+                db.ExportedTokens.Add(exportedTokenEntity);
+                await db.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                ViewData[WellKnownTempData.ErrorMessage] = "Couldn't export";
+                RedirectToAction(nameof(CashuWallet), new { storeId = StoreData.Id });
+            }
+        });
+        return RedirectToAction(nameof(ExportedToken), new { tokenId = exportedTokenEntity.Id });
+    }
+
+    /// <summary>
+    /// Api route for fetching exported token data
+    /// </summary>
+    /// <param name="tokenId">Stored Token GUID</param>
+    [HttpGet("/token")]
+    public async Task<IActionResult> ExportedToken(Guid tokenId)
+    {
+        
+        var db = _cashuDbContextFactory.CreateContext();
+       
+        var exportedToken = db.ExportedTokens.SingleOrDefault(e => e.Id == tokenId);
+        if (exportedToken == null)
+        {
+            return BadRequest("Can't find token with provided GUID");
+        }
+
+        if (!exportedToken.IsUsed)
+        { 
+            try
+            {
+                var wallet = new CashuWallet(exportedToken.Mint, exportedToken.Unit);
+                var proofs = CashuTokenHelper.Decode(exportedToken.SerializedToken, out _)
+                    .Tokens.SelectMany(t => t.Proofs)
+                    .Distinct()
+                    .ToList();
+                var state = await wallet.CheckTokenState(proofs);
+                if (state == StateResponseItem.TokenState.SPENT)
+                {
+                    exportedToken.IsUsed = true;
+                    db.ExportedTokens.Update(exportedToken);
+                    await db.SaveChangesAsync();
+                }
+            }
+            catch (Exception)
+            {
+                //honestly, there's nothing to do. maybe it'll work next time
+            }
+        }
+        
+        var model = new ExportedTokenViewModel()
+        {
+            Amount = exportedToken.Amount,
+            Unit = exportedToken.Unit,
+            MintAddress = exportedToken.Mint,
+            Token = exportedToken.SerializedToken,
+        };
+        
+        return View(model);
+    }
+
+    /// <summary>
+    /// Api route for fetching failed transactions list
+    /// </summary>
+    /// <returns></returns>
+    [HttpGet("failed-transactions")]
+    public async Task<IActionResult> FailedTransactions()
+    {
+        await using var db = _cashuDbContextFactory.CreateContext();
+        //fetch recently failed transactions 
+        var failedTransactions = db.FailedTransactions
+            .Where(ft => ft.StoreId == StoreData.Id)
+            .Include(ft=>ft.UsedProofs)
+            .ToList();
+            
+        return View(failedTransactions);
+    }
+    
+    
+    /*
+     * ==================================
+     *       Payment endpoints
+     * ==================================
+     */
     
     /// <summary>
     /// Api endpoint for Paying Invoice via Post Request, by sending all the data exclusively.
@@ -561,7 +694,7 @@ public class CashuController: Controller
     /// <exception cref="CashuPaymentException"></exception>
     [EnableCors(CorsPolicies.All)]
     [AllowAnonymous]
-    [HttpPost("~/cashu/PayInvoice")]
+    [HttpPost("~/cashu/pay-invoice")]
     public async Task<IActionResult> PayByToken(string token, string invoiceId)
     {
         try
@@ -592,7 +725,7 @@ public class CashuController: Controller
     /// <exception cref="Exception"></exception>
     [EnableCors(CorsPolicies.All)]
     [AllowAnonymous]
-    [HttpPost("~/cashu/PayInvoicePr")]
+    [HttpPost("~/cashu/pay-invoice-pr")]
     public async Task<ActionResult> PayByPaymentRequest([FromBody] JObject payload)
     {
         try
@@ -602,6 +735,7 @@ public class CashuController: Controller
                 throw new ArgumentException("Required fields are missing in the payload.");
             }
 
+            //todo idk why i didn't do it that way, but well i've fucked up
             //it's a workaround - it should be deserialized by JSONSerializer 
             var parsedPayload = new PaymentRequestPayload
             {
@@ -650,7 +784,21 @@ public class CashuController: Controller
             return BadRequest(ex.Message);
         }
     }
+
+    // todo this method is useless,
+    // check for `GetInvoicePaymentMethods` in `GreenfieldInvoiceController`
+    // if you look `ToPaymentMethodModels`, you can see that you can add fields in the `AdditionalData` field
+    // it may already be exposed if you already implemented `ParsePaymentPromptDetails`
+    // `api/v1/stores/{storeId}/invoices/{invoiceId}/payment-methods`
+    // API to fetch payment request for invoice
+    [HttpGet("~/cashu/get-payment-request")]
+    public Task<IActionResult> GetPaymentRequest()
+    {
+        throw new NotImplementedException();
+    }
 }
+//todo make sure to reject stuff without active node lol 
+
 
   
 

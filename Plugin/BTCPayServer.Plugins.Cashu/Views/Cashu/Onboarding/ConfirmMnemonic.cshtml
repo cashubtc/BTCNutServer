@@ -1,0 +1,202 @@
+@using BTCPayServer
+@model BTCPayServer.Plugins.Cashu.ViewModels.ConfirmMnemonicViewModel
+@{
+    Layout = "Views/UIStores/_LayoutWalletSetup";
+    ViewData["Title"] = "Your recovery phrase";
+}
+
+@section PageHeadContent {
+<style>
+    main { max-width: 800px; margin: 0 auto; text-align: center;}
+
+    #RecoveryPhrase {
+        display: grid !important;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+        list-style: none;
+        padding-left: 0;
+        margin: 2rem auto;
+    }
+
+    #RecoveryPhrase li {
+        display: flex;
+        justify-content: flex-start;
+        align-items: center;
+        min-height: 3rem;
+        border: 2px solid var(--btcpay-border-color);
+        border-radius: 6px;
+        background: var(--btcpay-backdrop-bg);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        user-select: none;
+
+        padding: 0;             
+        gap: 0.5rem;
+        overflow: hidden;
+    }
+
+    #RecoveryPhrase li:hover {
+        border-color: var(--btcpay-primary);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    #RecoveryPhrase li .num-box:hover {
+        background: var(--btcpay-primary);
+    }
+
+    #RecoveryPhrase li.clicked {
+        border: 2px solid var(--btcpay-primary);
+        background: var(--btcpay-backdrop-bg);
+        box-shadow: 0 3px 8px rgba(0,100,200,0.15);
+        color: var(--btcpay-text-opacity);
+    }
+
+    #RecoveryPhrase li span.word {
+        line-height: 1;
+        font-weight: 500;
+        padding: 0.4rem 0.2rem;
+    }
+
+    #RecoveryPhrase li .num-box {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 0.75rem;
+        font-weight: 600;
+        font-size: 0.9rem;
+        background: var(--btcpay-border-color);
+        transition: all 0.2s ease;
+        flex-shrink: 0;
+        
+        border-radius: 0;
+        height: 100%;
+        width: auto;
+        aspect-ratio: 1 / 1;
+    }
+
+    #RecoveryPhrase li.clicked .num-box {
+        background: var(--btcpay-primary);
+        color: #fff;
+        border-color: var(--btcpay-primary);
+        transform: scale(1.1);
+    }
+
+    #proceed {
+        opacity: 0.5;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+
+    #proceed.active {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .instruction-text {
+        font-size: 1.1rem;
+        color: #666;
+        margin-bottom: 1rem;
+    }
+
+    @@media (max-width: 768px) {
+    #RecoveryPhrase {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    }
+
+    @@media (max-width: 480px) {
+    #RecoveryPhrase {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+    }
+</style>
+}
+
+<main>
+    <partial name="_StatusMessage" />
+    <div class="d-inline-flex flex-column align-items-center justify-content-center">
+        <a asp-controller="Cashu" asp-action="CreateMnemonic" asp-route-storeId="@Context.GetStoreData().Id">
+            <vc:icon symbol="back" />
+        </a>
+        <div class="text-warning mb-3">
+            <vc:icon symbol="warning"/>
+        </div>
+        <div class="lead text-center">
+            <h1 class="text-center text-warning mb-3">
+                Confirm recovery phrase
+            </h1>
+        </div>
+    </div>
+    <div class="lead text-center">
+        <p class="instruction-text mb-0">Tap the first four words in the order they appeared</p>
+        <p class="text-muted small">Click again to deselect</p>
+    </div>
+    <ol id="RecoveryPhrase" data-mnemonic="@Model.Mnemonic" class="d-inline-block my-5 mx-auto ps-4">
+        @foreach (var word in Model.Words)
+        {
+            <li class="text-start text-muted" data-word="@word">
+                <div class="num-box"></div>
+                <span class="word text-dark h5">@word</span>
+            </li>
+        }
+    </ol>
+
+    <form asp-controller="Cashu" asp-action="ConfirmMnemonic"  method="post">
+        <input type="hidden" name="fourWordChunk" value=""/>
+        <button type="submit" class="btn btn-primary btn-lg mt-3 px-5" id="proceed">Done</button>
+    </form>
+</main>
+
+@section PageFootContent {
+    <script>
+    const selectedWords = [];
+    const maxSelection = 4;
+
+    function updateHiddenInput() {
+        const input = document.querySelector('input[name="fourWordChunk"]');
+        input.value = selectedWords.join("");
+
+        const proceedBtn = document.getElementById('proceed');
+        if (selectedWords.length === maxSelection) {
+            proceedBtn.classList.add('active');
+        } else {
+            proceedBtn.classList.remove('active');
+        }
+    }
+
+    function updateWordNumbers() {
+        document.querySelectorAll("#RecoveryPhrase li").forEach(li => {
+            const numBox = li.querySelector(".num-box");
+            numBox.innerHTML = '';
+
+            if (li.dataset.clicked) {
+                const orderNum = selectedWords.indexOf(li.dataset.word) + 1;
+                numBox.textContent = orderNum;
+            }
+        });
+    }
+
+    document.querySelectorAll("#RecoveryPhrase li").forEach(li => {
+        li.addEventListener("click", () => {
+            const word = li.dataset.word;
+
+            if (li.dataset.clicked) {
+                const index = selectedWords.indexOf(word);
+                if (index > -1) {
+                    selectedWords.splice(index, 1);
+                }
+                delete li.dataset.clicked;
+                li.classList.remove("clicked");
+            }
+            else if (selectedWords.length < maxSelection) {
+                selectedWords.push(word);
+                li.dataset.clicked = "true";
+                li.classList.add("clicked");
+            }
+
+            updateWordNumbers();
+            updateHiddenInput();
+        });
+    });
+</script>
+}

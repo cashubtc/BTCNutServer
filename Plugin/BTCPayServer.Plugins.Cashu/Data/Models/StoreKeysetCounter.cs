@@ -6,5 +6,5 @@ public class StoreKeysetCounter
 {
     public string StoreId { get; set; }
     public KeysetId KeysetId { get; set; }
-    public long Counter { get; set; }
+    public int Counter { get; set; }
 }

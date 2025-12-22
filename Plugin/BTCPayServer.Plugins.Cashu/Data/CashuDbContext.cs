@@ -24,6 +24,8 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
     public DbSet<ExportedToken> ExportedTokens { get; set; }
     public DbSet<CashuWalletConfig> CashuWalletConfig { get; set; }
     public DbSet<StoreKeysetCounter> StoreKeysetCounters { get; set; }
+    
+    // public DbSet<LightningClientQuote> LightningClientQuotes { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -58,6 +60,11 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
                     d => d == null ? null : JsonSerializer.Serialize(d, (JsonSerializerOptions)null!),
                     d => d == null ? null : JsonSerializer.Deserialize<DLEQProof>(d, (JsonSerializerOptions)null!)
                 );
+            entity.Property(p => p.P2PkE)
+                .HasConversion(
+                    e => e == null ? null : e.ToString(),
+                    e => e == null ? null : new PubKey(e, false)
+                    );
         });
 
         modelBuilder.Entity<MintKeys>(entity =>
@@ -81,7 +88,6 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
                 ks => JsonSerializer.Deserialize<Keyset>(ks,
                     new JsonSerializerOptions { Converters = { new KeysetJsonConverter() } }));
         });
-
         
         modelBuilder.Entity<FailedTransaction>(entity =>
         {
@@ -136,10 +142,10 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
                     m => m.ToString(),
                     wm => new Mnemonic(wm, Wordlist.English)
                 );
-
+        
             entity.HasKey(cwc => cwc.StoreId);
         });
-
+        
         modelBuilder.Entity<StoreKeysetCounter>(entity =>
         {
             entity.Property(skc=>skc.KeysetId)
@@ -150,7 +156,7 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
             
             entity.HasKey(skc => new {skc.StoreId, skc.KeysetId});
         });
-
+        
     }
 }
 

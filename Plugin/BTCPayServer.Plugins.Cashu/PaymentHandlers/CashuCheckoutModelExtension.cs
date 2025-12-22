@@ -8,7 +8,7 @@ public class CashuCheckoutModelExtension(DisplayFormatter displayFormatter) : IC
     public const string CheckoutBodyComponentName = "CashuCheckout";
     
     public PaymentMethodId PaymentMethodId => CashuPlugin.CashuPmid;
-    public string Image => "Resources/cashu.svg";
+    public string Image => "Resources/img/cashu.svg";
     public string Badge => "🥜";
     
     

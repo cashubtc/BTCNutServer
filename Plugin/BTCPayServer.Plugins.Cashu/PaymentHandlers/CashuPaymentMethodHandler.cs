@@ -43,7 +43,7 @@ public class CashuPaymentMethodHandler(
         }
         
         var invoice = context.InvoiceEntity;
-        ;
+        
         var paymentPath =  $"{invoice.ServerUrl.WithoutEndingSlash()}{linkGenerator.GetPathByAction(nameof(CashuController.PayByPaymentRequest), "Cashu")}";
         
         context.Prompt.PaymentMethodFee = (Money.Satoshis(cashuConfig.FeeConfing.CustomerFeeAdvance).ToDecimal(MoneyUnit.BTC));
@@ -53,7 +53,7 @@ public class CashuPaymentMethodHandler(
             CashuUtils.CreatePaymentRequest(due, invoice.Id, paymentPath, cashuConfig.TrustedMintsUrls);
          context.Prompt.Destination = paymentRequest;
          
-        if (cashuConfig.PaymentModel == CashuPaymentModel.MeltImmediately)
+        if (cashuConfig.PaymentModel == CashuPaymentModel.HoldWhenTrusted)
         {
             var lnConfig = lightningHandler.ParsePaymentMethodConfig(store.GetPaymentMethodConfigs()[lnPmi]);
             if (!store.IsLightningEnabled(_network.CryptoCode))
@@ -61,7 +61,6 @@ public class CashuPaymentMethodHandler(
                 throw new PaymentMethodUnavailableException("Melting tokens requires a lightning node to be configured for the store.");
             }
             var preferOnion = Uri.TryCreate(context.InvoiceEntity.ServerUrl, UriKind.Absolute, out var u) && u.IsOnion();
-            var nodeInfo = (await lightningHandler.GetNodeInfo(lnConfig, context.Logs, preferOnion)).FirstOrDefault();
         }
     }
 
@@ -70,6 +69,7 @@ public class CashuPaymentMethodHandler(
         context.Prompt.Currency = "BTC";
         context.Prompt.PaymentMethodFee = 0m;
         context.Prompt.Divisibility = 8;
+        
         // context.Prompt.RateDivisibility = 0;
         return Task.CompletedTask;
     }

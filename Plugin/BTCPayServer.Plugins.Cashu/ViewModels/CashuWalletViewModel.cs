@@ -14,11 +14,4 @@ public class CashuWalletViewModel
        .GroupBy(b => b.Unit)
        .OrderByDescending(g => g.Key)
        .Select(gr => CashuUtils.FormatAmount((ulong)gr.Sum(x => (decimal)x.Amount), gr.Key));
-
-
-
-
 }
-
-   
-   

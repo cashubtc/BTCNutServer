@@ -1,7 +1,6 @@
 @using BTCPayServer.Abstractions.Contracts
 @using BTCPayServer.Data
 @using Microsoft.AspNetCore.Identity
-@using Microsoft.AspNetCore.Mvc.TagHelpers
 @inject SignInManager<ApplicationUser> SignInManager;
 @inject IScopeProvider ScopeProvider
 @inject CashuStatusProvider CashuStatusProvider
@@ -11,8 +10,10 @@
 @if (SignInManager.IsSignedIn(User) && !string.IsNullOrEmpty(storeId))
 {
     var isEnabled = await CashuStatusProvider.CashuEnabled(storeId);
-    var isActive = Context.Request.Path.Value?.Contains("/cashu") == true;
-    
+    var isActive = Context.Request.Path.Value?.EndsWith("/cashu") == true;
+    var isWalletActive = Context.Request.Path.Value?.EndsWith("/cashu/wallet") == true;
+    var isSettingsActive = Context.Request.Path.Value?.EndsWith("/cashu/settings") == true;
+            
     <li class="nav-item">
         <a class="nav-link @(isActive ? "active" : "")"
            asp-route-storeId="@storeId"
@@ -22,14 +23,22 @@
             <span>Cashu</span>
         </a>
     </li>
-    @if (isActive)
+    @if (isActive || isWalletActive || isSettingsActive && isEnabled) 
     {
         <li class="nav-item nav-item-sub">
-            <a class="nav-link"
+            <a class="nav-link @(isWalletActive ? "active" : "")"
                asp-route-storeId="@storeId"
                asp-action="CashuWallet"
                asp-controller="Cashu">
                 <span class="me-2">Wallet</span>
+            </a>
+        </li>
+        <li class="nav-item nav-item-sub">
+            <a class="nav-link @(isSettingsActive ? "active" : "")"
+               asp-route-storeId="@storeId",
+               asp-controller="Cashu"
+               asp-action="Settings">
+                <span class="me-2">Settings</span>
             </a>
         </li>
         

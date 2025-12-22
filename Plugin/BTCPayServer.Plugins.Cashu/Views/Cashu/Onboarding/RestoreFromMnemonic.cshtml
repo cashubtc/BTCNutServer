@@ -1,0 +1,48 @@
+@using BTCPayServer
+@model BTCPayServer.Plugins.Cashu.ViewModels.WalletRestoreViewModel
+@{
+    Layout = "Views/UIStores/_LayoutWalletSetup";
+}
+@section Navbar {
+    <a asp-controller="Cashu" asp-action="GettingStarted">
+        <vc:icon symbol="back" />
+    </a>
+}
+
+<header class="text-center">
+    <h1>@ViewData["Title"]</h1>
+    <p class="lead text-secondary mt-3" text-translate="true">Manually enter your 12 or 24 word recovery seed.</p>
+</header>
+
+<div class="my-5">
+    @if (!User.IsInRole(Roles.ServerAdmin))
+    {
+        <div class="alert alert-warning">
+            You are not an admin on this server. While you are able to import or generate a wallet via seed with
+            your account, please understand that you are trusting the server admins not just with your
+            <a href="https://docs.btcpayserver.org/Deployment/ThirdPartyHosting/#privacy-concerns" target="_blank" class="alert-link" rel="noreferrer noopener">privacy</a>
+            but also with <a href="https://docs.btcpayserver.org/Deployment/ThirdPartyHosting/#trust-concerns" target="_blank" class="alert-link" rel="noreferrer noopener">trivial access to your funds.</a>
+        </div>
+    }
+    
+    <form asp-controller="Cashu" asp-action="RestoreFromMnemonic">
+        <div class="form-group">
+            <label asp-for="Mnemonic" class="form-label" text-translate="true">Wallet Recovery Seed</label>
+            <textarea asp-for="Mnemonic" class="form-control font-monospace py-2" rows="2" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+            <span asp-validation-for="Mnemonic" class="text-danger"></span>
+        </div>
+    
+        <div class="form-group">
+            <label asp-for="MintUrls" class="form-label" text-translate="true">Mint List</label>
+            <textarea asp-for="MintUrls" class="form-control font-monospace py-2" rows="2" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+            <span asp-validation-for="MintUrls" class="text-danger"></span>
+        </div>
+        
+        <button type="submit" class="btn btn-primary btn-lg mt-3 px-5" id="proceed">Restore</button>
+    </form>
+    
+</div>
+
+@section PageFootContent {
+    <partial name="_ValidationScriptsPartial" />
+}

@@ -25,10 +25,6 @@ public class FailedTransaction
     public required DateTimeOffset LastRetried {get;set;}
     public string Details {get;set;}
     public bool Resolved { get; set; }
-    
-  
-
-    
 }
 
 public class MeltDetails

@@ -1,0 +1,219 @@
+@model string
+
+@{
+// model is a string separated by strings or newlines
+var existingUrls = string.IsNullOrEmpty(Model)
+? new List<string>()
+: Model.Split(new[] { "\r\n", "\r", "\n", "," }, StringSplitOptions.RemoveEmptyEntries)
+.Select(u => u.Trim())
+.Where(u => !string.IsNullOrWhiteSpace(u))
+.ToList();
+}
+
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-4">
+            <div class="col-md-7">
+                <h6 class="mb-3">Add a Trusted Mint</h6>
+                <div class="mb-3">
+                    <label class="form-label">Mint URL</label>
+                    <input id="mintUrl"
+                           type="url"
+                           class="form-control"
+                           placeholder="https://mint.example.com" />
+                    <span class="text-danger validation-error" style="display: none;"></span>
+                </div>
+                <button type="button"
+                        class="btn btn-primary"
+                        data-action="add-mint">
+                    Add mint
+                </button>
+            </div>
+
+            <div class="col-md-5 border-start-md">
+                <h6 class="mb-3">Find a Mint</h6>
+                <p class="text-muted mb-3">
+                    Browse mints at bitcoinmints.com.
+                </p>
+                <a href="https://bitcoinmints.com"
+                   class="btn btn-outline-primary"
+                   target="_blank"
+                   rel="noreferrer">
+                    View Cashu Mints
+                </a>
+            </div>
+        </div>
+
+        <hr class="my-4" />
+        <h6 class="mb-3">Trusted Mints</h6>
+
+        <div id="mintsContainer">
+            <div class="text-muted d-flex align-items-center">
+                <vc:icon symbol="bank" class="me-2" />
+                <span>No trusted mints yet.</span>
+            </div>
+        </div>
+
+        <textarea id="trustedMintsData"
+                  name="TrustedMintsUrls"
+                  style="display: none;">@string.Join("\n", existingUrls)</textarea>
+    </div>
+</div>
+
+<script>
+    (function() {
+        // init with data from server
+        const initialData = document.getElementById('trustedMintsData').value;
+        const startMints = initialData
+            ? initialData.split('\n').map(u => u.trim()).filter(u => u.length > 0)
+            : [];
+
+        const mintsState = {
+            mints: startMints.map((u, idx) => ({ id: idx, url: u })),
+            idCounter: startMints.length
+        };
+
+        const elements = {
+            mintUrl: document.getElementById('mintUrl'),
+            mintsContainer: document.getElementById('mintsContainer'),
+            trustedMintsData: document.getElementById('trustedMintsData'),
+            addMintBtn: document.querySelector('[data-action="add-mint"]'),
+            validationError: document.querySelector('.validation-error')
+        };
+
+        function showError(message) {
+            if (elements.validationError) {
+                elements.validationError.textContent = message;
+                elements.validationError.style.display = 'block';
+            }
+        }
+
+        function hideError() {
+            if (elements.validationError) {
+                elements.validationError.style.display = 'none';
+            }
+        }
+
+        function addMint() {
+            const url = elements.mintUrl.value.trim();
+
+            if (!url) {
+                showError('Please enter a mint URL');
+                return;
+            }
+
+            // validate url
+            try {
+                const parsed = new URL(url);
+                if (!parsed.protocol.startsWith('http')) {
+                    showError('URL must start with http:// or https://');
+                    return;
+                }
+            } catch (_) {
+                showError('Invalid URL format');
+                return;
+            }
+
+            // check for dupes
+            if (mintsState.mints.some(m => m.url === url)) {
+                showError('This mint is already in your trusted list');
+                return;
+            }
+
+            hideError();
+
+            mintsState.mints.push({
+                id: mintsState.idCounter++,
+                url: url
+            });
+
+            elements.mintUrl.value = '';
+            elements.mintUrl.focus();
+            updateUI();
+        }
+
+        function removeMint(id) {
+            mintsState.mints = mintsState.mints.filter(m => m.id !== id);
+            updateUI();
+        }
+
+        function updateUI() {
+            if (!elements.mintsContainer || !elements.trustedMintsData) return;
+
+            if (mintsState.mints.length === 0) {
+                elements.mintsContainer.innerHTML = `
+                    <div class="text-muted d-flex align-items-center">
+                        <svg class="icon icon-sm me-2"><use href="/svg/bootstrap-icons.svg#bank"></use></svg>
+                        <span>No trusted mints yet.</span>
+                    </div>`;
+            } else {
+                elements.mintsContainer.innerHTML = `
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Mint</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${mintsState.mints.map(m => `
+                                <tr>
+                                    <td>
+                                        <div class="fw-semibold">Cashu Mint</div>
+                                        <div class="text-muted small">
+                                            ${escapeHtml(m.url)}
+                                        </div>
+                                    </td>
+                                    <td class="text-end">
+                                        <button type="button"
+                                                class="btn btn-link btn-sm text-danger remove-mint-btn"
+                                                data-mint-id="${m.id}"
+                                                title="Remove mint">
+                                            <svg class="icon icon-sm"><use href="/svg/bootstrap-icons.svg#trash"></use></svg>
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>`;
+
+                
+                elements.mintsContainer.querySelectorAll('.remove-mint-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const mintId = parseInt(btn.getAttribute('data-mint-id'), 10);
+                        removeMint(mintId);
+                    });
+                });
+            }
+
+            // update textarea
+            elements.trustedMintsData.value = mintsState.mints
+                .map(m => m.url)
+                .join('\n');
+        }
+
+        function escapeHtml(text) {
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        if (elements.addMintBtn) {
+            elements.addMintBtn.addEventListener('click', addMint);
+        }
+
+        if (elements.mintUrl) {
+            elements.mintUrl.addEventListener('keypress', e => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addMint();
+                }
+            });
+
+            elements.mintUrl.addEventListener('input', hideError);
+        }
+
+        // initialize ui 
+        updateUI();
+    })();
+</script>

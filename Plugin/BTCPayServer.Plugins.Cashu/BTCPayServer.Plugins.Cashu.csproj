@@ -50,9 +50,11 @@
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\..\DotNut\DotNut\DotNut.csproj" />
         <ProjectReference Include="..\..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" />
         <ProjectReference Include="..\..\submodules\btcpayserver\BTCPayServer.Common\BTCPayServer.Common.csproj" Private="true" />
         <EmbeddedResource Include="Resources\**" />
+        <ProjectReference Include="..\..\submodules\DotNut\DotNut\DotNut.csproj" />
     </ItemGroup>
 
     <ItemGroup>
@@ -61,8 +63,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="BTCPayServer.Lightning.All" Version="1.6.9" />
-        <PackageReference Include="DotNut" Version="1.0.5" />
+<!--        <PackageReference Include="BTCPayServer.Lightning.All" Version="1.6.9" />-->
     </ItemGroup>
 
 </Project>

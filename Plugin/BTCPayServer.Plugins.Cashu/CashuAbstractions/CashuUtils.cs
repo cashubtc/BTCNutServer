@@ -108,69 +108,6 @@ public static class CashuUtils
     }
 
     /// <summary>
-    /// Function choosing which proofs have to be spent in order to provide the correct value.
-    /// </summary>
-    /// <param name="proofs">User proofs</param>
-    /// <param name="amountToSend">Amount (in tokens unit!!)</param>
-    /// <returns>SendResponse containing proofs to keep and proofs to send.</returns>
-    public static SendResponse SelectProofsToSend(List<Proof> proofs, ulong amountToSend)
-    {
-        // Sort proofs in ascending order by amount
-        var sortedProofs = proofs.OrderBy(p => p.Amount).ToList();
-
-        // Separate proofs into two lists: smaller or equal to amountToSend, and bigger
-        var smallerProofs = sortedProofs
-            .Where(p => p.Amount <= amountToSend)
-            .OrderByDescending(p => p.Amount).ToList();
-        var biggerProofs = sortedProofs
-            .Where(p => p.Amount > amountToSend)
-            .OrderBy(p => p.Amount).ToList();
-        var nextBigger = biggerProofs.FirstOrDefault();
-
-        // If no smaller proofs exist but a bigger proof is available, send the bigger one
-        if (!smallerProofs.Any() && nextBigger != null)
-            return new SendResponse
-            {
-                Keep = proofs.Where(p => p.Secret != nextBigger.Secret).ToList(),
-                Send = [nextBigger]
-            };
-
-        // If no valid proofs are available, return all proofs as Keep
-        if (!smallerProofs.Any() && nextBigger == null)
-            return new SendResponse { Keep = proofs, Send = new List<Proof>() };
-
-        // Start selecting proofs with the largest possible proof first (it can be the exact amount)
-        var remainder = amountToSend;
-        var selectedProofs = new List<Proof> { smallerProofs[0] };
-
-        // Reduce the remainder amount by the selected proof amount
-        remainder -= selectedProofs[0].Amount;
-
-        // Recursively select additional proofs if needed
-        if (remainder > 0)
-        {
-            var recursiveResponse = SelectProofsToSend(smallerProofs.Skip(1).ToList(), remainder);
-            selectedProofs.AddRange(recursiveResponse.Send);
-        }
-
-        // If the selected proofs do not sum up to the required amount, use the next bigger proof
-        if (selectedProofs.Select(p => p.Amount).Sum() < amountToSend && nextBigger != null)
-            selectedProofs = [nextBigger];
-        else if (selectedProofs.Select(p => p.Amount).Sum() < amountToSend && nextBigger == null)
-        {
-            selectedProofs = new List<Proof>();
-        }
-
-        // Return the selected proofs for sending and the remaining proofs to keep
-        return new SendResponse
-        {
-            Keep = proofs.Where(p => selectedProofs.All(sp => !sp.Secret.GetBytes().SequenceEqual(p.Secret.GetBytes())))
-                .ToList(),
-            Send = selectedProofs
-        };
-    }
-
-    /// <summary>
     /// Function mapping payment amount to keyset supported amounts in order to create swap payload. Always tries to fit the biggest proof.
     /// </summary>
     /// <param name="paymentAmount">Amount that has to be covered.</param>
@@ -563,15 +500,6 @@ public static class CashuUtils
             return false;
 
         return true;
-    }
-    /// <summary>
-    /// Sum ulongs
-    /// </summary>
-    /// <param name="values"></param>
-    /// <returns></returns>
-    public static ulong Sum(this IEnumerable<ulong> values)
-    {
-        return values.Aggregate(0UL, (current, val) => current + val);
     }
 
     public class SimplifiedCashuToken

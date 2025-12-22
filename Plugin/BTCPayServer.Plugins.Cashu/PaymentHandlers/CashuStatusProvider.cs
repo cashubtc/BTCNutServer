@@ -13,14 +13,15 @@ public class CashuStatusProvider(StoreRepository storeRepository,
         try
         {
             var storeData = await storeRepository.FindStore(storeId);
-
+            
             var currentPaymentMethodConfig =
                 storeData?.GetPaymentMethodConfig<CashuPaymentMethodConfig>(CashuPlugin.CashuPmid, handlers);
-            
             if (currentPaymentMethodConfig == null)
+            {
                 return false;
+            }
             
-            if (currentPaymentMethodConfig.PaymentModel == CashuPaymentModel.MeltImmediately)
+            if (currentPaymentMethodConfig.PaymentModel is CashuPaymentModel.HoldWhenTrusted or CashuPaymentModel.AutoConvert)
             {
                 if (!storeData.IsLightningEnabled("BTC"))
                 {

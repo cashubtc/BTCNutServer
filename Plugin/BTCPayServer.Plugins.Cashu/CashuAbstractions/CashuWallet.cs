@@ -147,7 +147,7 @@ public class CashuWallet
         
         var blankOutputs = CashuUtils.CreateBlankOutputs((ulong)meltQuote.FeeReserve, activeKeyset.Id, keys);
         
-        var request = new PostMeltBolt11Request
+        var request = new PostMeltRequest
         {
            Quote = meltQuote.Quote,
            Inputs = proofsToMelt.ToArray(),
@@ -156,7 +156,7 @@ public class CashuWallet
 
         try
         {
-            var response = await _cashuHttpClient.Melt<PostMeltQuoteBolt11Response, PostMeltBolt11Request>(
+            var response = await _cashuHttpClient.Melt<PostMeltQuoteBolt11Response, PostMeltRequest>(
                 "bolt11",
                 request, cancellationToken);
             

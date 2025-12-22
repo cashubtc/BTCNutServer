@@ -9,7 +9,7 @@ public class CashuPaymentMethodConfig
     
     public List<string> TrustedMintsUrls { get; set; }
     
-    public CashuFeeConfig FeeConfing { get; set; }
+    public CashuFeeConfig? FeeConfing { get; set; }
 }
 
 public class CashuFeeConfig

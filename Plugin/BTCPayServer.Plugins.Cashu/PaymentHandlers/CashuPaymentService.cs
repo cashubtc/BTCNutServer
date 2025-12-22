@@ -164,7 +164,7 @@ public class CashuPaymentService
 
         switch (cashuPaymentMethodConfig.PaymentModel)
         {
-            case CashuPaymentModel.MeltImmediately:
+            case CashuPaymentModel.HoldWhenTrusted:
             {
                 var lnClient = GetStoreLightningClient(storeData, network);
                 var wallet = new CashuWallet(lnClient, simplifiedToken.Mint, simplifiedToken.Unit, _cashuDbContextFactory);
@@ -180,7 +180,7 @@ public class CashuPaymentService
                     );
                 return;
             }
-            case CashuPaymentModel.SwapAndHodl:
+            case CashuPaymentModel.TrustedMintsOnly:
             {
                 throw new CashuPaymentException("Can't process this payment. Merchant can't trust this mint.");
             }
