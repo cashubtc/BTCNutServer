@@ -44,7 +44,7 @@ public class CashuPaymentMethodHandler(
         
         var invoice = context.InvoiceEntity;
         
-        var paymentPath =  $"{invoice.ServerUrl.WithoutEndingSlash()}{linkGenerator.GetPathByAction(nameof(CashuController.PayByPaymentRequest), "Cashu")}";
+        var paymentPath =  $"{invoice.ServerUrl.WithoutEndingSlash()}{linkGenerator.GetPathByAction(nameof(CashuPaymentController.PayByPaymentRequest), "CashuPayment")}";
         
         context.Prompt.PaymentMethodFee = (Money.Satoshis(cashuConfig.FeeConfing.CustomerFeeAdvance).ToDecimal(MoneyUnit.BTC));
         

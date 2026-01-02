@@ -1,3 +1,4 @@
+#nullable enable
 using System.Collections.Generic;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 
@@ -5,9 +6,9 @@ namespace BTCPayServer.Plugins.Cashu.PaymentHandlers;
 
 public class CashuPaymentMethodConfig
 {
-    public CashuPaymentModel PaymentModel { get; set; }
-    
-    public List<string> TrustedMintsUrls { get; set; }
+    public CashuPaymentModel PaymentModel { get; set; } = CashuPaymentModel.TrustedMintsOnly;
+
+    public List<string> TrustedMintsUrls { get; set; } = [];
     
     public CashuFeeConfig? FeeConfing { get; set; }
 }

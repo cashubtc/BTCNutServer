@@ -1,0 +1,112 @@
+@using BTCPayServer.Plugins.Cashu.Data.Models
+@model BTCPayServer.Plugins.Cashu.Services.RestoreStatus
+
+@if (Model == null)
+{
+    <div class="alert alert-danger">
+        <h4>Restore job not found</h4>
+        <a href="/stores/@ViewContext.RouteData.Values["storeId"]/cashu/restore-wallet" class="btn btn-primary">Try again</a>
+    </div>
+    return;
+}
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="d-flex align-items-center justify-content-between">
+            <h2>Wallet Recovery</h2>
+            @if (Model.Status is RestoreState.Queued or RestoreState.Processing)
+            {
+                <button class="btn btn-outline-primary" onclick="location.reload()">
+                    <i class="fa fa-refresh"></i> Refresh
+                </button>
+            }
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-sm-6">
+                        <strong>Status:</strong>
+                        <span class="badge ms-2 @GetStatusBadgeClass(Model.Status)">
+                            @Model.Status
+                        </span>
+                    </div>
+                    <div class="col-sm-6">
+                        <strong>Progress:</strong>
+                        <span>@Model.ProcessedMints / @Model.TotalMints mints</span>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(Model.CurrentMint))
+                {
+                    <div class="alert alert-info mb-3">
+                        <strong>Processing:</strong> <code>@Model.CurrentMint</code>
+                    </div>
+                }
+
+                <div class="progress mb-3" style="height: 20px;">
+                    <div class="progress-bar @GetProgressBarClass(Model.Status)"
+                         role="progressbar"
+                         style="width: @GetProgressPercentage(Model.ProcessedMints, Model.TotalMints)%">
+                        @Model.ProcessedMints / @Model.TotalMints
+                    </div>
+                </div>
+
+                @if (Model.Errors.Any())
+                {
+                    <div class="alert alert-warning">
+                        <h6>Warnings:</h6>
+                        <ul class="mb-0">
+                            @foreach (var error in Model.Errors)
+                            {
+                                <li>@error</li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (Model.Status is RestoreState.Completed or RestoreState.CompletedWithErrors)
+        {
+            <div class="alert alert-success mt-4">
+                <h5>✅ Recovery Complete!</h5>
+                <p>Wallet restored successfully@(Model.Errors.Any() ? " (with warnings)" : "")</p>
+                <a href="~/stores/@Model.StoreId/cashu" class="btn btn-primary">Go to Wallet</a>
+            </div>
+        }
+        else if (Model.Status == RestoreState.Failed)
+        {
+            <div class="alert alert-danger mt-4">
+                <h5>❌ Recovery Failed</h5>
+                <p>Try again with different seed or mints.</p>
+                <a href="/stores/@ViewContext.RouteData.Values["storeId"]/cashu/restore-wallet" class="btn btn-primary">Retry</a>
+            </div>
+        }
+    </div>
+</div>
+
+@* Helpers *@
+@{
+    string GetStatusBadgeClass(RestoreState status) => status switch
+    {
+        RestoreState.Queued => "bg-secondary",
+        RestoreState.Processing => "bg-primary",
+        RestoreState.Completed => "bg-success",
+        RestoreState.CompletedWithErrors => "bg-warning",
+        RestoreState.Failed => "bg-danger",
+        _ => "bg-secondary"
+    };
+    
+    string GetProgressBarClass(RestoreState status) => status switch
+    {
+        RestoreState.Processing => "progress-bar-striped progress-bar-animated bg-primary",
+        RestoreState.Completed => "bg-success",
+        RestoreState.CompletedWithErrors => "bg-warning",
+        RestoreState.Failed => "bg-danger",
+        _ => ""
+    };
+    
+    int GetProgressPercentage(int processed, int total) =>
+        total > 0 ? (int)Math.Round((double)processed / total * 100) : 0;
+}

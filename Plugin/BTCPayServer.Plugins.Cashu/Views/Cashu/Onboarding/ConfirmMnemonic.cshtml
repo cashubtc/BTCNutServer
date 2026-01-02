@@ -115,7 +115,7 @@
 <main>
     <partial name="_StatusMessage" />
     <div class="d-inline-flex flex-column align-items-center justify-content-center">
-        <a asp-controller="Cashu" asp-action="CreateMnemonic" asp-route-storeId="@Context.GetStoreData().Id">
+        <a asp-controller="UICashuOnboarding" asp-action="CreateMnemonic" asp-route-storeId="@Context.GetStoreData().Id">
             <vc:icon symbol="back" />
         </a>
         <div class="text-warning mb-3">
@@ -141,7 +141,7 @@
         }
     </ol>
 
-    <form asp-controller="Cashu" asp-action="ConfirmMnemonic"  method="post">
+    <form asp-controller="UICashuOnboarding" asp-action="ConfirmMnemonic"  method="post">
         <input type="hidden" name="fourWordChunk" value=""/>
         <button type="submit" class="btn btn-primary btn-lg mt-3 px-5" id="proceed">Done</button>
     </form>

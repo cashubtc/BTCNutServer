@@ -18,7 +18,7 @@
         <a class="nav-link @(isActive ? "active" : "")"
            asp-route-storeId="@storeId"
            asp-action="StoreConfig"
-           asp-controller="Cashu">
+           asp-controller="UICashuStores">
             <span class="me-2 btcpay-status btcpay-status--@(isEnabled ? "enabled" : "pending")"></span>
             <span>Cashu</span>
         </a>
@@ -29,14 +29,14 @@
             <a class="nav-link @(isWalletActive ? "active" : "")"
                asp-route-storeId="@storeId"
                asp-action="CashuWallet"
-               asp-controller="Cashu">
+               asp-controller="UICashuWallet">
                 <span class="me-2">Wallet</span>
             </a>
         </li>
         <li class="nav-item nav-item-sub">
             <a class="nav-link @(isSettingsActive ? "active" : "")"
                asp-route-storeId="@storeId",
-               asp-controller="Cashu"
+               asp-controller="UICashuStores"
                asp-action="Settings">
                 <span class="me-2">Settings</span>
             </a>

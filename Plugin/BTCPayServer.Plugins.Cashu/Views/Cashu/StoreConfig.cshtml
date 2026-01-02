@@ -26,7 +26,7 @@ ViewData.SetActivePage(CashuPlugin.PluginNavKey, "Cashu Configuration", "Configu
 
 <partial name="_StatusMessage" />
 
-<form asp-controller="Cashu" asp-action="StoreConfig" method="post">
+<form asp-controller="UICashuStores" asp-action="StoreConfig" method="post">
     <div style="max-width: 960px;">
         <p class="w-auto">
             Decide how your store will handle incoming ecash payments. You can select one of the following acceptance modes to control how ecash from different mints is processed. Each mode balances flexibility, custody, and risk differently. You can update this setting anytime in your wallet preferences.

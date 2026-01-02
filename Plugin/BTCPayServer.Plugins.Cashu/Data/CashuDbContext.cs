@@ -153,10 +153,9 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
                     ki => ki.ToString(),
                     ki => new KeysetId(ki.ToString())
                 );
-            
+
             entity.HasKey(skc => new {skc.StoreId, skc.KeysetId});
         });
-        
     }
 }
 

@@ -4,6 +4,7 @@ using BTCPayServer.Hosting;
 using BTCPayServer.Payments;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.PaymentHandlers;
+using BTCPayServer.Plugins.Cashu.Services;
 using DotNut.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -16,8 +17,8 @@ public class CashuPlugin : BaseBTCPayServerPlugin
         new() {Identifier = nameof(BTCPayServer), Condition = ">=2.1.0"},
     };
 
-    internal static PaymentMethodId CashuPmid = new PaymentMethodId("CASHU");
-    internal static string CashuDisplayName = "Cashu";
+    internal readonly static PaymentMethodId CashuPmid = new ("CASHU");
+    internal readonly static string CashuDisplayName = "Cashu";
 
     public override void Execute(IServiceCollection services)
     {

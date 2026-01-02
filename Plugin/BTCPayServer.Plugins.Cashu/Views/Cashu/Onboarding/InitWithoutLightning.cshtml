@@ -33,8 +33,7 @@
     <p class="text-muted">
         To start receiving ecash, add at least one mint you trust. You can add more anytime.
     </p>
-    <form asp-controller="Cashu" asp-action="StoreConfig" asp-route-storeId="@Context.GetRouteValue("storeId")">
-        @* model is empty here because user is here only for first time  *@
+    <form asp-controller="UICashuStores" asp-action="StoreConfig" asp-route-storeId="@Context.GetRouteValue("storeId")">
         <partial id="trusted-mints-input" name="_TrustedMintsInput" model=@Model.TrustedMintsUrls/>
         <input type="hidden" name="PaymentAcceptanceModel" value="@CashuPaymentModel.TrustedMintsOnly"/>
         <input type="hidden" name="Enabled" value="@true" />

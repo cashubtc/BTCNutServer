@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -13,8 +15,9 @@ using BTCPayServer.Plugins.Cashu.Data.Models;
 using DotNut;
 using DotNut.Abstractions;
 using DotNut.Api;
+using DotNut.NBitcoin.BIP39;
 
-namespace BTCPayServer.Plugins.Cashu;
+namespace BTCPayServer.Plugins.Cashu.Services;
 
 public class RestoreService : IHostedService
 {
@@ -22,9 +25,9 @@ public class RestoreService : IHostedService
     private readonly SemaphoreSlim _semaphore = new (1, 1);
     private readonly ConcurrentDictionary<string, RestoreStatus> _restoreStatuses = new();
     private readonly ConcurrentQueue<RestoreJob> _restoreQueue = new();
+    private readonly CashuDbContextFactory _dbContextFactory;
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _processingTask;
-    private CashuDbContextFactory _dbContextFactory;
 
     public RestoreService(ILogger<RestoreService> logger, CashuDbContextFactory dbContextFactory)
     {
@@ -34,7 +37,7 @@ public class RestoreService : IHostedService
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("[Cashu] Restore Service starting...");
+        _logger.LogInformation("[Cashu] Wallet restore Service starting...");
         
         _cancellationTokenSource = new CancellationTokenSource();
         _processingTask = ProcessRestoreQueueAsync(_cancellationTokenSource.Token);
@@ -44,7 +47,7 @@ public class RestoreService : IHostedService
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("[Cashu] Restore Service stopping...");
+        _logger.LogInformation("[Cashu] Wallet restore Service stopping...");
         
         _cancellationTokenSource?.Cancel();
         
@@ -85,17 +88,11 @@ public class RestoreService : IHostedService
             Errors = new List<string>()
         };
         
-        _logger.LogInformation($"[Cashu] Restore job {jobId} queued for store {storeId} with {mintUrls.Count} mints");
+        _logger.LogInformation($"[Cashu] Wallet restore job {jobId} queued for store {storeId} with {mintUrls.Count} mints");
         
         return jobId;
     }
-
-    public string QueueRestore(string storeId, string mintUrls, string seed)
-    {
-        var mints = mintUrls.Split(" ").ToList();
-        return this.QueueRestore(storeId, mints, seed);
-    }
-
+    
     /// <summary>
     /// Get restore status
     /// </summary>
@@ -137,7 +134,7 @@ public class RestoreService : IHostedService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[Cashu] Error processing restore queue");
+                _logger.LogError(ex, "[Cashu] Error processing wallet restore queue");
                 await Task.Delay(5000, cancellationToken);
             }
         }
@@ -149,7 +146,7 @@ public class RestoreService : IHostedService
         status.Status = RestoreState.Processing;
         status.StartedAt = DateTime.UtcNow;
         
-        _logger.LogInformation($"Starting restore job {job.JobId} for store {job.StoreId}");
+        _logger.LogInformation($"[Cashu] Starting wallet restore job {job.JobId} for store {job.StoreId}");
 
         try
         {
@@ -173,8 +170,7 @@ public class RestoreService : IHostedService
                         var restoredProofs = await RestoreFromMintAsync(job.StoreId, mintUrl, job.Seed, cancellationToken);
                         if (restoredProofs.Count != 0)
                         {
-                            await SaveRecoveredTokensAsync(job.StoreId, restoredProofs, cancellationToken);
-                            status.TotalRecoveredProofs += restoredProofs.Count;
+                            await SaveRecoveredTokensAsync(job.StoreId, mintUrl, restoredProofs, cancellationToken);
                         }
                         
                         status.ProcessedMints++;
@@ -190,6 +186,7 @@ public class RestoreService : IHostedService
                 catch (Exception ex)
                 {
                     var error = $"Error restoring from {mintUrl}: {ex.Message}";
+                    status.UnreachableMints.Add(mintUrl);
                     status.Errors.Add(error);
                     _logger.LogError(ex, error);
                 }
@@ -197,10 +194,10 @@ public class RestoreService : IHostedService
             
             status.Status = status.Errors.Any() ? RestoreState.CompletedWithErrors : RestoreState.Completed;
             status.CompletedAt = DateTime.UtcNow;
+            await SaveWalletConfig(job.StoreId, new Mnemonic(job.Seed), cancellationToken);
             
             _logger.LogInformation(
-                $"Restore job {job.JobId} completed. Recovered {status.TotalRecoveredProofs} proofs " +
-                $"with {status.Errors.Count} errors");
+                $"Restore job {job.JobId} completed." + (status.Errors.Any() ? $"with {status.Errors.Count} errors": ""));
         }
         catch (Exception ex)
         {
@@ -235,18 +232,50 @@ public class RestoreService : IHostedService
 
     private async Task SaveRecoveredTokensAsync(
         string storeId, 
+        string mintUrl,
         List<Proof> proofs, 
         CancellationToken cancellationToken)
     {
         try
         {
             await using var db = _dbContextFactory.CreateContext();
+            
+            // add mint to db if not present.
+            if (!db.Mints.Any(m => m.Url == mintUrl))
+            {
+                db.Mints.Add(new Mint(mintUrl));
+            }
+            // add proofs
             db.Proofs.AddRange(StoredProof.FromBatch(proofs, storeId));
+            
+            await db.SaveChangesAsync(cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Cashu] Error saving recovered tokens to db!");
         }
+    }
+
+    private async Task SaveWalletConfig(string storeId, Mnemonic mnemonic, CancellationToken ct)
+    {
+        try
+        {
+            await using var db = _dbContextFactory.CreateContext();
+            db.CashuWalletConfig.Add(new CashuWalletConfig()
+            {
+                StoreId = storeId,
+                WalletMnemonic = mnemonic,
+                Verified = true,
+            });
+            await db.SaveChangesAsync(ct);
+            // counter is already set and if anything happens, will be overriden while restore process.
+
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Cashu] Error saving recovered seed to db!");
+            
+        }   
     }
 }
 
@@ -267,20 +296,9 @@ public class RestoreStatus
     public int TotalMints { get; set; }
     public int ProcessedMints { get; set; }
     public string? CurrentMint { get; set; }
-    public List<string> UnreachableMints { get; set; }
-    public int TotalRecoveredProofs { get; set; }
+    public List<string> UnreachableMints { get; set; } = new();
     public List<string> Errors { get; set; } = new();
     public DateTime QueuedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
-}
-
-public enum RestoreState
-{
-    Queued,
-    Processing,
-    Completed,
-    CompletedWithErrors,
-    Failed,
-    Cancelled
 }
