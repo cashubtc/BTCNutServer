@@ -32,15 +32,26 @@ var existingUrls = string.IsNullOrEmpty(Model)
 
             <div class="col-md-5 border-start-md">
                 <h6 class="mb-3">Find a Mint</h6>
-                <p class="text-muted mb-3">
+                <p class="text-muted mb-2">
                     Browse mints at bitcoinmints.com.
                 </p>
                 <a href="https://bitcoinmints.com"
-                   class="btn btn-outline-primary"
+                   class="btn btn-outline-primary d-inline-flex align-items-center gap-2"
                    target="_blank"
                    rel="noreferrer">
-                    View Cashu Mints
+                    View Cashu Mints 
+                    <svg xmlns="http://www.w3.org/2000/svg" 
+                         width="18" height="18" viewBox="0 0 24 24" 
+                         fill="none" stroke="currentColor" stroke-width="2" 
+                         stroke-linecap="round" stroke-linejoin="round" 
+                         class="lucide lucide-square-arrow-out-up-right-icon lucide-square-arrow-out-up-right"
+                    >
+                        <path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/>
+                        <path d="m21 3-9 9"/>
+                        <path d="M15 3h6v6"/>
+                    </svg>
                 </a>
+                
             </div>
         </div>
 
@@ -48,10 +59,6 @@ var existingUrls = string.IsNullOrEmpty(Model)
         <h6 class="mb-3">Trusted Mints</h6>
 
         <div id="mintsContainer">
-            <div class="text-muted d-flex align-items-center">
-                <vc:icon symbol="cross" class="me-2" />
-                <span>No trusted mints yet.</span>
-            </div>
         </div>
 
         <textarea id="trustedMintsData"
@@ -59,6 +66,63 @@ var existingUrls = string.IsNullOrEmpty(Model)
                   style="display: none;">@string.Join("\n", existingUrls)</textarea>
     </div>
 </div>
+
+<template id="mintRowTemplate">
+    <tr>
+        <td>
+            <div class="fw-semibold">Cashu Mint</div>
+            <div class="text-muted small mint-url"></div>
+        </td>
+        <td class="text-end">
+            <div>
+                <button type="button" class="bg-transparent border-0 text-secondary" title="Mint info">
+                        <svg xmlns="http://www.w3.org/2000/svg" 
+                             width="20" height="20" viewBox="0 0 24 24" 
+                             fill="none" stroke="currentColor" 
+                             stroke-width="2" 
+                             stroke-linecap="round" 
+                             stroke-linejoin="round" 
+                        >
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 16v-4"/>
+                            <path d="M12 8h.01"/>
+                        </svg>
+                </button>
+                <button type="button"
+                        class="bg-transparent border-0 text-danger remove-mint-btn"
+                        title="Remove mint">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                         viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18"/>
+                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        <path d="M5 6v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6"/>
+                    </svg>
+                </button>
+            </div>
+        </td>
+    </tr>
+</template>
+
+<template id="emptyStateTemplate">
+        <div class="text-muted d-flex flex-column gap-1 align-items-center">
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 width="24" height="24" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round"
+                 stroke-linejoin="round"
+                 class="lucide lucide-landmark-icon lucide-landmark">
+                <path d="M10 18v-7"/>
+                <path d="M11.12 2.198a2 2 0 0 1 1.76.006l7.866 3.847c.476.233.31.949-.22.949H3.474c-.53 0-.695-.716-.22-.949z"/>
+                <path d="M14 18v-7"/>
+                <path d="M18 18v-7"/>
+                <path d="M3 22h18"/>
+                <path d="M6 18v-7"/>
+            </svg>
+            <span>No trusted mints yet.</span>
+        </div>
+</template>
+
 
 <script>
     (function() {
@@ -138,53 +202,39 @@ var existingUrls = string.IsNullOrEmpty(Model)
         }
 
         function updateUI() {
-            if (!elements.mintsContainer || !elements.trustedMintsData) return;
-
             if (mintsState.mints.length === 0) {
-                elements.mintsContainer.innerHTML = `
-                    <div class="text-muted d-flex align-items-center">
-                        <svg class="icon icon-sm me-2"><use href="/svg/bootstrap-icons.svg#bank"></use></svg>
-                        <span>No trusted mints yet.</span>
-                    </div>`;
+                const template = document.getElementById('emptyStateTemplate');
+                const clone = template.content.cloneNode(true);
+                elements.mintsContainer.innerHTML = '';
+                elements.mintsContainer.appendChild(clone);
             } else {
                 elements.mintsContainer.innerHTML = `
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Mint</th>
-                                <th class="text-end">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${mintsState.mints.map(m => `
-                                <tr>
-                                    <td>
-                                        <div class="fw-semibold">Cashu Mint</div>
-                                        <div class="text-muted small">
-                                            ${escapeHtml(m.url)}
-                                        </div>
-                                    </td>
-                                    <td class="text-end">
-                                        <button type="button"
-                                                class="btn btn-link btn-sm text-danger remove-mint-btn"
-                                                data-mint-id="${m.id}"
-                                                title="Remove mint">
-                                            x
-<!--                                            <svg class="icon icon-sm"><use href="/svg/bootstrap-icons.svg#trash"></use></svg>-->
-                                        </button>
-                                    </td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>`;
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Mint</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="mintsTableBody"></tbody>
+            </table>`;
 
-                
-                elements.mintsContainer.querySelectorAll('.remove-mint-btn').forEach(btn => {
+                const tbody = document.getElementById('mintsTableBody');
+                const template = document.getElementById('mintRowTemplate');
+
+                mintsState.mints.forEach(m => {
+                    const clone = template.content.cloneNode(true);
+
+                    // Wypełnij dane
+                    clone.querySelector('.mint-url').textContent = m.url;
+                    const btn = clone.querySelector('.remove-mint-btn');
+                    btn.dataset.mintId = m.id;
                     btn.addEventListener('click', (e) => {
                         e.preventDefault();
-                        const mintId = parseInt(btn.getAttribute('data-mint-id'), 10);
-                        removeMint(mintId);
+                        removeMint(m.id);
                     });
+
+                    tbody.appendChild(clone);
                 });
             }
 
@@ -192,11 +242,6 @@ var existingUrls = string.IsNullOrEmpty(Model)
             elements.trustedMintsData.value = mintsState.mints
                 .map(m => m.url)
                 .join('\n');
-        }
-
-        function escapeHtml(text) {
-            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-            return text.replace(/[&<>"']/g, m => map[m]);
         }
 
         if (elements.addMintBtn) {
