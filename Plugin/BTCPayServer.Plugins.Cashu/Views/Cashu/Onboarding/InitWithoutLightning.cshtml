@@ -36,7 +36,7 @@
     <form asp-controller="UICashuStores" asp-action="StoreConfig" asp-route-storeId="@Context.GetRouteValue("storeId")">
         <partial id="trusted-mints-input" name="_TrustedMintsInput" model=@Model.TrustedMintsUrls/>
         <input type="hidden" name="PaymentAcceptanceModel" value="@CashuPaymentModel.TrustedMintsOnly"/>
-        <input type="hidden" name="Enabled" value="@true" />
+        <input type="hidden" name="Enabled" value="true" />
         <input type="hidden" name="HasLightningNodeConnected" value="false" />
         <div class="d-flex justify-content-end mt-4">
             <input type="submit" class="btn btn-primary" value="Finish"/>

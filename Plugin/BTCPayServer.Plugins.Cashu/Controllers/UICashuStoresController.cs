@@ -1,11 +1,9 @@
 #nullable enable
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Client;
-using BTCPayServer.Controllers;
 using BTCPayServer.Data;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
@@ -151,7 +149,7 @@ public class UICashuStoresController : Controller
 
         return View("Views/Cashu/Settings/FeeSettings.cshtml", model);
     }
-
+    
     [HttpPost("{storeId}/cashu/settings")]
     public async Task<IActionResult> Settings(string storeId, CashuSettingsViewModel viewModel)
     {

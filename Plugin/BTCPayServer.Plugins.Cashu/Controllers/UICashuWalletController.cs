@@ -14,8 +14,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using BTCPayServer.Plugins.Cashu.Data.Models;
-using BTCPayServer.Plugins.Cashu.Services;
 using DotNut;
+using DotNut.Abstractions;
 using DotNut.ApiModels;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
@@ -233,6 +233,7 @@ public class UICashuWalletController : Controller
             return BadRequest("Can't find token with provided GUID");
         }
 
+        //todo move this logic into main wallet screen. maybe do a "state check" button? 
         if (!exportedToken.IsUsed)
         {
             try
@@ -379,5 +380,47 @@ public class UICashuWalletController : Controller
         await db.SaveChangesAsync();
         TempData[WellKnownTempData.SuccessMessage] = $"Transaction retrieved successfully. Marked as paid.";
         return RedirectToAction("FailedTransactions", new { storeId = StoreData.Id});
+    }
+
+    [HttpGet("~/cashu/mint-info")]
+    public async Task<IActionResult> GetMintInfo(string mintUrl)
+    {
+        if (!mintUrl.StartsWith("http") && !mintUrl.StartsWith("https") 
+            || !Uri.TryCreate(mintUrl, UriKind.Absolute, out var uri))
+        {
+            return BadRequest("Invalid mint url provided!");
+        }
+
+        try
+        {
+            var info = await Wallet
+                .Create()
+                .WithMint(uri)
+                .GetInfo();
+            
+            var dto = new
+            {
+                name = info.Name,
+                description = info.Description,
+                description_long = info.DescriptionLong,
+                contact = new
+                {
+                    email = info.Contact?.FirstOrDefault(i=>i?.Method == "email", null)?.Info,
+                    twitter = info.Contact?.FirstOrDefault(i=>i?.Method == "twitter", null)?.Info,
+                    nostr = info.Contact?.FirstOrDefault(i=>i?.Method == "nostr", null)?.Info,
+                },
+                nuts = info.Nuts?.Keys,
+                currency = info.IsSupportedMintMelt(4).Methods.Select(m=>m.Unit).Distinct(),
+                version = info.Version,
+                url = mintUrl
+            };
+
+            
+            return Ok(dto);
+        }
+        catch
+        {
+            return NotFound("Failed to fetch mint info");
+        }
     }
 }

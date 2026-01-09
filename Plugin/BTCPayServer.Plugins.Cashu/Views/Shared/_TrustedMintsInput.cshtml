@@ -65,6 +65,92 @@ var existingUrls = string.IsNullOrEmpty(Model)
                   name="TrustedMintsUrls"
                   style="display: none;">@string.Join("\n", existingUrls)</textarea>
     </div>
+    
+    <!-- Modal -->
+<div class="modal fade" id="mintInfoModal" tabindex="-1" aria-labelledby="mintInfoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title" id="mintInfoModalLabel">Mint Information</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="mintInfoContent">
+                <!-- Loading state -->
+                <div class="text-center py-5" id="mintInfoLoading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="text-muted mt-3">Fetching mint information...</p>
+                </div>
+
+                <!-- Error state -->
+                <div class="alert alert-danger d-none" id="mintInfoError"></div>
+
+                <!-- Content template -->
+                <div id="mintInfoData" class="d-none">
+                    <div class="mb-4">
+                        <h6 class="text-muted mb-2">Name</h6>
+                        <p id="mintName" class="mb-0"></p>
+                    </div>
+
+                    <div class="mb-4">
+                        <h6 class="text-muted mb-2">Description</h6>
+                        <p id="mintDescription" class="mb-0"></p>
+                    </div>
+
+                    <div class="mb-4">
+                        <h6 class="text-muted mb-2">Description long</h6>
+                        <p id="mintDescriptionLong" class="mb-0"></p>
+                    </div>
+
+                    <hr class="my-4" />
+
+                    <h6 class="mb-3">Contact</h6>
+
+                    <div class="mb-3 d-flex justify-content-between">
+                        <span class="text-muted">Email</span>
+                        <span id="mintEmail"></span>
+                    </div>
+
+                    <div class="mb-3 d-flex justify-content-between">
+                        <span class="text-muted">X</span>
+                        <span id="mintTwitter"></span>
+                    </div>
+
+                    <div class="mb-4 d-flex justify-content-between">
+                        <span class="text-muted">Nostr</span>
+                        <span id="mintNostr" class="font-monospace small text-break"></span>
+                    </div>
+
+                    <hr class="my-4" />
+
+                    <h6 class="mb-3">Details</h6>
+
+                    <div class="mb-3 d-flex justify-content-between">
+                        <span class="text-muted">URL</span>
+                        <span id="mintDetailUrl" class="text-end"></span>
+                    </div>
+
+                    <div class="mb-3 d-flex justify-content-between">
+                        <span class="text-muted">NUTS</span>
+                        <span id="mintNuts"></span>
+                    </div>
+
+                    <div class="mb-3 d-flex justify-content-between">
+                        <span class="text-muted">Currency</span>
+                        <span id="mintCurrency"></span>
+                    </div>
+
+                    <div class="mb-3 d-flex justify-content-between">
+                        <span class="text-muted">Version</span>
+                        <span id="mintVersion"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 </div>
 
 <template id="mintRowTemplate">
@@ -75,18 +161,17 @@ var existingUrls = string.IsNullOrEmpty(Model)
         </td>
         <td class="text-end">
             <div>
-                <button type="button" class="bg-transparent border-0 text-secondary" title="Mint info">
-                        <svg xmlns="http://www.w3.org/2000/svg" 
-                             width="20" height="20" viewBox="0 0 24 24" 
-                             fill="none" stroke="currentColor" 
-                             stroke-width="2" 
-                             stroke-linecap="round" 
-                             stroke-linejoin="round" 
-                        >
-                            <circle cx="12" cy="12" r="10"/>
-                            <path d="M12 16v-4"/>
-                            <path d="M12 8h.01"/>
-                        </svg>
+                <button type="button" 
+                        class="bg-transparent border-0 text-secondary mint-info-btn" 
+                        title="Mint info">
+                    <svg xmlns="http://www.w3.org/2000/svg" 
+                         width="20" height="20" viewBox="0 0 24 24" 
+                         fill="none" stroke="currentColor" 
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4"/>
+                        <path d="M12 8h.01"/>
+                    </svg>
                 </button>
                 <button type="button"
                         class="bg-transparent border-0 text-danger remove-mint-btn"
@@ -103,6 +188,7 @@ var existingUrls = string.IsNullOrEmpty(Model)
         </td>
     </tr>
 </template>
+
 
 <template id="emptyStateTemplate">
         <div class="text-muted d-flex flex-column gap-1 align-items-center">
@@ -126,7 +212,6 @@ var existingUrls = string.IsNullOrEmpty(Model)
 
 <script>
     (function() {
-        // init with data from server
         const initialData = document.getElementById('trustedMintsData').value;
         const startMints = initialData
             ? initialData.split('\n').map(u => u.trim()).filter(u => u.length > 0)
@@ -144,6 +229,9 @@ var existingUrls = string.IsNullOrEmpty(Model)
             addMintBtn: document.querySelector('[data-action="add-mint"]'),
             validationError: document.querySelector('.validation-error')
         };
+
+        // Bootstrap modal instance
+        let mintInfoModal = null;
 
         function showError(message) {
             if (elements.validationError) {
@@ -166,7 +254,6 @@ var existingUrls = string.IsNullOrEmpty(Model)
                 return;
             }
 
-            // validate url
             try {
                 const parsed = new URL(url);
                 if (!parsed.protocol.startsWith('http')) {
@@ -178,7 +265,6 @@ var existingUrls = string.IsNullOrEmpty(Model)
                 return;
             }
 
-            // check for dupes
             if (mintsState.mints.some(m => m.url === url)) {
                 showError('This mint is already in your trusted list');
                 return;
@@ -201,6 +287,51 @@ var existingUrls = string.IsNullOrEmpty(Model)
             updateUI();
         }
 
+        async function showMintInfo(mintUrl) {
+            if (!mintInfoModal) {
+                const modalEl = document.getElementById('mintInfoModal');
+                mintInfoModal = new bootstrap.Modal(modalEl);
+            }
+
+            // show modal with loading state
+            document.getElementById('mintInfoLoading').classList.remove('d-none');
+            document.getElementById('mintInfoError').classList.add('d-none');
+            document.getElementById('mintInfoData').classList.add('d-none');
+
+            mintInfoModal.show();
+
+            try {
+                const response = await fetch(`/cashu/mint-info?mintUrl=${encodeURIComponent(mintUrl)}`);
+                
+                if (!response.ok) {
+                    throw new Error(await response.text());
+                }
+
+                const data = await response.json();
+
+                // hide loading, show content
+                document.getElementById('mintInfoLoading').classList.add('d-none');
+                document.getElementById('mintInfoData').classList.remove('d-none');
+
+                // populate data
+                document.getElementById('mintName').textContent = data.name || 'N/A';
+                document.getElementById('mintDescription').textContent = data.description || 'N/A';
+                document.getElementById('mintDescriptionLong').textContent = data.description_long || 'N/A';
+                document.getElementById('mintEmail').textContent = data.contact?.email || 'N/A';
+                document.getElementById('mintTwitter').textContent = data.contact?.twitter || 'N/A';
+                document.getElementById('mintNostr').textContent = data.contact?.nostr || 'N/A';
+                document.getElementById('mintDetailUrl').textContent = mintUrl;
+                document.getElementById('mintNuts').textContent = data.nuts?.join(', ') || 'N/A';
+                document.getElementById('mintCurrency').textContent = data.currency?.join(', ') || 'N/A';
+                document.getElementById('mintVersion').textContent = data.version || 'N/A';
+
+            } catch (error) {
+                document.getElementById('mintInfoLoading').classList.add('d-none');
+                document.getElementById('mintInfoError').classList.remove('d-none');
+                document.getElementById('mintInfoError').textContent = error.message || 'Failed to load mint information';
+            }
+        }
+
         function updateUI() {
             if (mintsState.mints.length === 0) {
                 const template = document.getElementById('emptyStateTemplate');
@@ -209,15 +340,15 @@ var existingUrls = string.IsNullOrEmpty(Model)
                 elements.mintsContainer.appendChild(clone);
             } else {
                 elements.mintsContainer.innerHTML = `
-            <table class="table table-sm align-middle mb-0">
-                <thead>
-                    <tr>
-                        <th>Mint</th>
-                        <th class="text-end">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="mintsTableBody"></tbody>
-            </table>`;
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Mint</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mintsTableBody"></tbody>
+                    </table>`;
 
                 const tbody = document.getElementById('mintsTableBody');
                 const template = document.getElementById('mintRowTemplate');
@@ -225,14 +356,18 @@ var existingUrls = string.IsNullOrEmpty(Model)
                 mintsState.mints.forEach(m => {
                     const clone = template.content.cloneNode(true);
 
-                    // Wypełnij dane
+                    // fill the data
                     clone.querySelector('.mint-url').textContent = m.url;
-                    const btn = clone.querySelector('.remove-mint-btn');
-                    btn.dataset.mintId = m.id;
-                    btn.addEventListener('click', (e) => {
+                    
+                    const removeBtn = clone.querySelector('.remove-mint-btn');
+                    removeBtn.dataset.mintId = m.id;
+                    removeBtn.addEventListener('click', (e) => {
                         e.preventDefault();
                         removeMint(m.id);
                     });
+
+                    const infoBtn = clone.querySelector('.mint-info-btn');
+                    infoBtn.addEventListener('click', () => showMintInfo(m.url));
 
                     tbody.appendChild(clone);
                 });
@@ -263,3 +398,4 @@ var existingUrls = string.IsNullOrEmpty(Model)
         updateUI();
     })();
 </script>
+
