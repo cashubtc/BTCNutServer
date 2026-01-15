@@ -85,7 +85,8 @@ public class RestoreService : IHostedService
             ProcessedMints = 0,
             StartedAt = null,
             CompletedAt = null,
-            Errors = new List<string>()
+            Errors = new List<string>(),
+            RestoredMints = new List<RestoredMint>()
         };
         
         _logger.LogInformation($"[Cashu] Wallet restore job {jobId} queued for store {storeId} with {mintUrls.Count} mints");
@@ -167,14 +168,14 @@ public class RestoreService : IHostedService
                     {
                         _logger.LogInformation($"Restoring from mint {mintUrl} for store {job.StoreId}");
                         
-                        var restoredProofs = await RestoreFromMintAsync(job.StoreId, mintUrl, job.Seed, cancellationToken);
-                        if (restoredProofs.Count != 0)
+                        var restoredMint = await RestoreFromMintAsync(job.StoreId, mintUrl, job.Seed, cancellationToken);
+                        if (restoredMint.Proofs.Count != 0)
                         {
-                            await SaveRecoveredTokensAsync(job.StoreId, mintUrl, restoredProofs, cancellationToken);
+                            await SaveRecoveredTokensAsync(job.StoreId, mintUrl, restoredMint.Proofs, cancellationToken);
                         }
-                        
+                        status.RestoredMints.Add(restoredMint);
                         status.ProcessedMints++;
-                        _logger.LogInformation($"Recovered {restoredProofs.Count} proofs from {mintUrl}");
+                        _logger.LogInformation($"Recovered {restoredMint.Proofs.Count} proofs from {mintUrl}");
                     }
                     finally
                     {
@@ -209,7 +210,7 @@ public class RestoreService : IHostedService
         }
     }
 
-    private async Task<List<Proof>> RestoreFromMintAsync(
+    private async Task<RestoredMint> RestoreFromMintAsync(
         string storeId,
         string mintUrl, 
         string seed, 
@@ -227,7 +228,31 @@ public class RestoreService : IHostedService
        var proofs=  await wallet
            .Restore()
            .ProcessAsync(ct);
-       return proofs.ToList();
+
+       var proofList = proofs.ToList();
+
+       var keysetUnits = await wallet.GetActiveKeysetIdsWithUnits(ct);
+       var amountsPerUnit = new Dictionary<string, ulong>();
+       
+       if (keysetUnits != null)
+       {
+           foreach (var keyValuePair in keysetUnits)
+           {
+               var key = keyValuePair.Key;
+               
+               amountsPerUnit[key] = amountsPerUnit.GetValueOrDefault(key) + proofList
+                                         .Where(p => p.Id == keyValuePair.Value)
+                                         .Select(p => p.Amount)
+                                         .Sum();
+           }
+       }
+       
+        return new RestoredMint()
+        {
+            MintUrl = mintUrl,
+            Proofs = proofList,
+            Balances = amountsPerUnit
+        };
     }
 
     private async Task SaveRecoveredTokensAsync(
@@ -301,4 +326,13 @@ public class RestoreStatus
     public DateTime QueuedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
+    public List<RestoredMint> RestoredMints { get; set; }
+    
+}
+
+public class RestoredMint
+{
+    public string MintUrl { get; set; } = string.Empty;
+    public List<Proof> Proofs { get; set; }
+    public Dictionary<string, ulong> Balances { get; set; }
 }

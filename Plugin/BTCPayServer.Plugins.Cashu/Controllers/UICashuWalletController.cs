@@ -143,7 +143,7 @@ public class UICashuWalletController : Controller
         List<GetKeysetsResponse.KeysetItemResponse> keysets;
         try
         {
-            var cashuWallet = new CashuWallet(mintUrl, unit);
+            var cashuWallet = new StatefulWallet(mintUrl, unit);
             keysets = await cashuWallet.GetKeysets();
             if (keysets == null || keysets.Count == 0)
             {
@@ -238,7 +238,7 @@ public class UICashuWalletController : Controller
         {
             try
             {
-                var wallet = new CashuWallet(exportedToken.Mint, exportedToken.Unit);
+                var wallet = new StatefulWallet(exportedToken.Mint, exportedToken.Unit);
                 var proofs = CashuTokenHelper.Decode(exportedToken.SerializedToken, out _)
                     .Tokens.SelectMany(t => t.Proofs)
                     .Distinct()

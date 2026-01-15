@@ -18,7 +18,7 @@ namespace BTCPayServer.Plugins.Cashu.CashuAbstractions;
 /// <summary>
 /// Class leveraging cashu wallet functionalities.
 /// </summary>
-public class CashuWallet
+public class StatefulWallet
 {
     private readonly CashuHttpClient _cashuHttpClient;
     private readonly ILightningClient? _lightningClient;
@@ -28,7 +28,7 @@ public class CashuWallet
     private readonly string _unit;
     private readonly CashuDbContextFactory? _dbContextFactory;
     public bool HasLightningClient => _lightningClient is not null;
-    public CashuWallet(ILightningClient lightningClient, string mint, string unit = "sat", CashuDbContextFactory? cashuDbContextFactory = null)
+    public StatefulWallet(ILightningClient lightningClient, string mint, string unit = "sat", CashuDbContextFactory? cashuDbContextFactory = null)
     {
         _lightningClient = lightningClient;
         _mintUrl = mint;
@@ -38,7 +38,7 @@ public class CashuWallet
     }
     
     //In case of just swapping token and saving in db, store doesn't have to have lighting client configured
-    public CashuWallet(string mint, string unit = "sat", CashuDbContextFactory? cashuDbContextFactory = null)
+    public StatefulWallet(string mint, string unit = "sat", CashuDbContextFactory? cashuDbContextFactory = null)
     {
         _cashuHttpClient = CashuUtils.GetCashuHttpClient(mint);
         _mintUrl = mint;
@@ -53,7 +53,7 @@ public class CashuWallet
     /// <param name="singleUnitPrice">Price per unit of token</param>
     /// <param name="keysets"></param>
     /// <returns>Melt Quote that has to be sent to mint</returns>
-    public async Task<CreateMeltQuoteResult> CreateMeltQuote(CashuUtils.SimplifiedCashuToken token, decimal singleUnitPrice, List<GetKeysetsResponse.KeysetItemResponse> keysets)
+    public async Task<CreateMeltQuoteResult> CreateMaxMeltQuote(CashuUtils.SimplifiedCashuToken token, decimal singleUnitPrice, List<GetKeysetsResponse.KeysetItemResponse> keysets)
     {
         try
         {

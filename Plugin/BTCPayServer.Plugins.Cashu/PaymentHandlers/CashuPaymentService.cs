@@ -123,7 +123,7 @@ public class CashuPaymentService
             throw new CashuPaymentException("Coudldn't process the payment. Can't fetch token/satoshi rate from mint");
         }
         
-        var invoiceAmount =Money.Coins( 
+        var invoiceAmount = Money.Coins( 
             invoice.GetPaymentPrompt(CashuPlugin.CashuPmid)?.Calculate().Due ?? invoice.Price
         );
         
@@ -147,7 +147,7 @@ public class CashuPaymentService
         
         if (cashuPaymentMethodConfig.TrustedMintsUrls.Contains(simplifiedToken.Mint))
         {
-            var wallet = new CashuWallet(simplifiedToken.Mint, simplifiedToken.Unit, _cashuDbContextFactory);
+            var wallet = new StatefulWallet(simplifiedToken.Mint, simplifiedToken.Unit, _cashuDbContextFactory);
             await EnsureTokenSpendable(wallet, simplifiedToken.Proofs);
             await HandleSwapOperation(
                 wallet,
@@ -167,7 +167,7 @@ public class CashuPaymentService
             case CashuPaymentModel.HoldWhenTrusted:
             {
                 var lnClient = GetStoreLightningClient(storeData, network);
-                var wallet = new CashuWallet(lnClient, simplifiedToken.Mint, simplifiedToken.Unit, _cashuDbContextFactory);
+                var wallet = new StatefulWallet(lnClient, simplifiedToken.Mint, simplifiedToken.Unit, _cashuDbContextFactory);
                 await EnsureTokenSpendable(wallet, simplifiedToken.Proofs);
                 await HandleMeltOperation(
                     wallet,
@@ -202,7 +202,7 @@ public class CashuPaymentService
     /// <param name="feeConfig">Fee configuration</param>
     /// <exception cref="CashuPaymentException">Error with message passed to UI</exception>
     private async Task HandleSwapOperation(
-        CashuWallet wallet,
+        StatefulWallet wallet,
         InvoiceEntity invoice,
         StoreData store,
         CashuUtils.SimplifiedCashuToken token,
@@ -322,7 +322,7 @@ public class CashuPaymentService
     /// Handles melt operation with retry
     /// </summary>
     private async Task HandleMeltOperation(
-        CashuWallet wallet,
+        StatefulWallet wallet,
         InvoiceEntity invoice,
         StoreData store,
         CashuUtils.SimplifiedCashuToken token,
@@ -351,7 +351,7 @@ public class CashuPaymentService
             throw new CashuPaymentException("Could not get keysets!", ex);
         }
         
-        var meltQuoteResponse = await wallet.CreateMeltQuote(token, unitPrice, keysets);
+        var meltQuoteResponse = await wallet.CreateMaxMeltQuote(token, unitPrice, keysets);
         if (!meltQuoteResponse.Success)
         {
             _logs.PayServer.LogError("Could not create melt quote!" );
@@ -593,7 +593,7 @@ public class CashuPaymentService
         return CashuPaymentState.Failed;
     }
     
-    private async Task EnsureTokenSpendable(CashuWallet wallet, List<Proof> proofs)
+    private async Task EnsureTokenSpendable(StatefulWallet wallet, List<Proof> proofs)
     {
         StateResponseItem.TokenState? tokenState = null;
         try
@@ -635,7 +635,7 @@ public class CashuPaymentService
         //If the invoice is paid, we should process the payment, even though if change isn't received.
         if (lnInvoice.Status == LightningInvoiceStatus.Paid)
         {
-            var wallet = new CashuWallet(ftx.MintUrl, ftx.Unit);
+            var wallet = new StatefulWallet(ftx.MintUrl, ftx.Unit);
 
             try
             {
@@ -699,7 +699,7 @@ public class CashuPaymentService
         {
             throw new InvalidOperationException($"Unexpected operation type: {ftx.OperationType}");
         }
-        var wallet = new CashuWallet(ftx.MintUrl, ftx.Unit);
+        var wallet = new StatefulWallet(ftx.MintUrl, ftx.Unit);
         try
         {
             //first check if token is spent. if not - don't care

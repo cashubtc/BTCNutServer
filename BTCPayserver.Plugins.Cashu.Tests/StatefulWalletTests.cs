@@ -19,7 +19,7 @@ using Xunit.Abstractions;
 
 namespace BTCPayserver.Plugins.Cashu.Tests;
 
-public class CashuWalletTests
+public class StatefulWalletTests
 {
     private readonly ITestOutputHelper _testOutputHelper;
 
@@ -33,7 +33,7 @@ public class CashuWalletTests
     private readonly ILightningClient _lightningClient;
 
 
-    public CashuWalletTests(ITestOutputHelper testOutputHelper)
+    public StatefulWalletTests(ITestOutputHelper testOutputHelper)
     {
         _testOutputHelper = testOutputHelper;
         var factory = new LightningClientFactory(Network.RegTest);
@@ -62,7 +62,7 @@ public class CashuWalletTests
     public void Constructor_WithLightningClient_InitializesCorrectly()
     {
         var dbf = CreateDb();
-        var wallet = new CashuWallet(
+        var wallet = new StatefulWallet(
             _lightningClient,
             _testnutMint,
             "sat",
@@ -74,7 +74,7 @@ public class CashuWalletTests
     [Fact]
     public void Constructor_WithLightningClient_WithoutDbContextFactory_InitializesCorrectly()
     {
-        var wallet = new CashuWallet(_lightningClient, _testnutMint);
+        var wallet = new StatefulWallet(_lightningClient, _testnutMint);
 
         Assert.NotNull(wallet);
     }
@@ -83,7 +83,7 @@ public class CashuWalletTests
     public void Constructor_WithoutLightningClient_InitializesCorrectly()
     {
         var dbf = CreateDb();
-        var wallet = new CashuWallet(_testnutMint, "sat", dbf);
+        var wallet = new StatefulWallet(_testnutMint, "sat", dbf);
 
         Assert.NotNull(wallet);
     }
@@ -91,7 +91,7 @@ public class CashuWalletTests
     [Fact]
     public void Constructor_WithoutLightningClient_WithoutDbContextFactory_InitializesCorrectly()
     {
-        var wallet = new CashuWallet(_testnutMint);
+        var wallet = new StatefulWallet(_testnutMint);
 
         Assert.NotNull(wallet);
     }
@@ -102,7 +102,7 @@ public class CashuWalletTests
     [Fact]
     public async Task GetKeysets_ReturnsAllKeysets()
     {
-        var wallet = new CashuWallet(_testnutMint);
+        var wallet = new StatefulWallet(_testnutMint);
         var testnutKeysets = await wallet.GetKeysets();
         Assert.NotNull(testnutKeysets);
         //keyset rotation killing my tests......... 
@@ -113,14 +113,14 @@ public class CashuWalletTests
         Assert.Contains("0042ade98b2a370a", testnutKeysetsStr);
         Assert.Contains("0054e990037fea46", testnutKeysetsStr);
         
-        var wallet2 = new CashuWallet(_localMint);
+        var wallet2 = new StatefulWallet(_localMint);
         var localKeysets = await wallet2.GetKeysets();
         Assert.NotNull(localKeysets);
         Assert.Single(localKeysets);
         Assert.Equal("00168d7de17d8b9b", localKeysets.First().Id.ToString());
         
         //multiple keysets
-        var wallet3 = new CashuWallet(_stablenut);
+        var wallet3 = new StatefulWallet(_stablenut);
         var keysets3 = await wallet3.GetKeysets();
         Assert.NotNull(keysets3);
         //at this point we're ignoring old, base64 keyset format
@@ -142,7 +142,7 @@ public class CashuWalletTests
     public async Task GetKeysets_AddsToDb()
     {
         var dbf = CreateDb();
-        var wallet = new CashuWallet(_testnutMint,"sat", dbf);
+        var wallet = new StatefulWallet(_testnutMint,"sat", dbf);
         var testnutKeysets = await wallet.GetKeysets();
 
         await using var ctx = dbf.CreateContext();
@@ -161,7 +161,7 @@ public class CashuWalletTests
     [Fact]
     public async Task GetKeysets_WithoutDbContext_DoesNotThrow()
     {
-        var wallet = new CashuWallet(_testnutMint); // bez podania DbContextFactory
+        var wallet = new StatefulWallet(_testnutMint); // bez podania DbContextFactory
         var exception = await Record.ExceptionAsync(() => wallet.GetKeysets());
         Assert.Null(exception);
     }
@@ -169,7 +169,7 @@ public class CashuWalletTests
     [Fact]
     public async Task GetKeysets_InvalidMint_ThrowsHttpRequestException()
     {
-        var wallet = new CashuWallet("https://ihatewritingtests.com");
+        var wallet = new StatefulWallet("https://ihatewritingtests.com");
         await Assert.ThrowsAsync<HttpRequestException>(()=>wallet.GetKeysets());
     }
     
@@ -178,7 +178,7 @@ public class CashuWalletTests
     public async Task SaveKeysetToDb_StoresDataCorrectly()
     {
         var dbf = CreateDb();
-        var wallet = new CashuWallet(_testnutMint, "sat", dbf);
+        var wallet = new StatefulWallet(_testnutMint, "sat", dbf);
 
         await using var ctx = dbf.CreateContext();
         var initialCount = await ctx.MintKeys.CountAsync();
@@ -196,7 +196,7 @@ public class CashuWalletTests
     [Fact]
     public async Task GetActiveKeyset_WithCustomUnit_ReturnsActiveKeysetForUnit()
     {
-        var wallet = new CashuWallet(_testnutMint, "usd");
+        var wallet = new StatefulWallet(_testnutMint, "usd");
         
         var result = await wallet.GetActiveKeyset();
         
@@ -210,7 +210,7 @@ public class CashuWalletTests
     [Fact]
     public async Task GetActiveKeyset_WithCustomUnit_ReturnsActiveKeysetForDefaultUnit()
     {
-        var wallet = new CashuWallet(_testnutMint);
+        var wallet = new StatefulWallet(_testnutMint);
     
         var result = await wallet.GetActiveKeyset();
 
@@ -226,7 +226,7 @@ public class CashuWalletTests
     {
         //while getting keysets they still should be saved to db.
         var dbf = CreateDb();
-        var wallet = new CashuWallet(_testnutMint, "usd", dbf);
+        var wallet = new StatefulWallet(_testnutMint, "usd", dbf);
         var activeKeyset = await wallet.GetActiveKeyset();
         Assert.NotNull(activeKeyset);
         var db = dbf.CreateContext();
@@ -254,7 +254,7 @@ public class CashuWalletTests
     public async Task GetKeys_ReturnsActiveKeysForNull()
     {
         var dbf = CreateDb();
-        var wallet = new CashuWallet(_testnutMint, "usd", dbf);
+        var wallet = new StatefulWallet(_testnutMint, "usd", dbf);
         var keys = await wallet.GetKeys(null);
         var keysets = await wallet.GetKeysets();
         Assert.NotNull(keys);
@@ -267,7 +267,7 @@ public class CashuWalletTests
     public async Task GetKeys_ReturnsActiveKeysForNullSatUnit()
     {
         var dbf = CreateDb();
-        var wallet = new CashuWallet(_testnutMint, "sat", dbf);
+        var wallet = new StatefulWallet(_testnutMint, "sat", dbf);
         var keys = await wallet.GetKeys(null);
         var keysets = await wallet.GetKeysets();
         Assert.NotNull(keys);
@@ -280,7 +280,7 @@ public class CashuWalletTests
     [Fact]
     public async Task GetKeys_ReturnsCorrectKeysForKeyset()
     {
-        var wallet = new CashuWallet(_testnutMint);
+        var wallet = new StatefulWallet(_testnutMint);
         var keysets = await wallet.GetKeysets();
         //wallets unit is 'sat', but let's choose the usd keyset
         var choosenKeyset = keysets.First(k => k.Unit == "usd");
@@ -292,7 +292,7 @@ public class CashuWalletTests
     [Fact]
     public async Task GetKeys_InvalidKeysetId_ReturnsEmpty()
     {
-        var wallet = new CashuWallet(_testnutMint);
+        var wallet = new StatefulWallet(_testnutMint);
         var invalidKeysetId = new KeysetId("ffffffffffffffff");
         //error 12001 keyset not known
         await Assert.ThrowsAsync<CashuProtocolException>(async () => await wallet.GetKeys(invalidKeysetId));
@@ -310,7 +310,7 @@ public class CashuWalletTests
         var token = CashuTokenHelper.Decode(tokenStr, out _);
         var simpleToken = CashuUtils.SimplifyToken(token);
         var dbf = CreateDb();
-        var wallet = new CashuWallet(_localMint, "sat", dbf);
+        var wallet = new StatefulWallet(_localMint, "sat", dbf);
         var response = await wallet.Receive(simpleToken.Proofs);
         Assert.True(response.Success);
         Assert.Null(response.Error);
@@ -337,7 +337,7 @@ public class CashuWalletTests
         var token = CashuTokenHelper.Decode(tokenStr, out _);
         var simpleToken = CashuUtils.SimplifyToken(token);
         var dbf = CreateDb();
-        var wallet = new CashuWallet(_testnutMint, "sat" , dbf);
+        var wallet = new StatefulWallet(_testnutMint, "sat" , dbf);
         var keysets =await wallet.GetKeysets();
         var fee = simpleToken.Proofs.ComputeFee(keysets.ToDictionary(k => k.Id, k=>k.InputFee??0));
         var response = await wallet.Receive(simpleToken.Proofs, fee);
@@ -370,7 +370,7 @@ public class CashuWalletTests
         var token = CashuTokenHelper.Decode(tokenStr, out _);
         var simpleToken = CashuUtils.SimplifyToken(token);
         var dbf = CreateDb();
-        var wallet = new CashuWallet(_localMint, "sat", dbf);
+        var wallet = new StatefulWallet(_localMint, "sat", dbf);
         var result =  await wallet.Receive(simpleToken.Proofs);
         
         // Error 11001 - token already spent
@@ -395,7 +395,7 @@ public class CashuWalletTests
                 }
             ],
         };
-        var cashuWallet = new CashuWallet(_localMint, "sat", CreateDb());
+        var cashuWallet = new StatefulWallet(_localMint, "sat", CreateDb());
 
         var result = await cashuWallet.Receive(invalidToken.Proofs);
         
@@ -423,7 +423,7 @@ public class CashuWalletTests
                 }
             ],
         };
-        var cashuWallet = new CashuWallet(_localMint, "sat", CreateDb());
+        var cashuWallet = new StatefulWallet(_localMint, "sat", CreateDb());
         
         //Invalid amounts
        await Assert.ThrowsAsync<ArgumentException>( async () => await cashuWallet.Receive(invalidToken.Proofs)); 
@@ -447,7 +447,7 @@ public class CashuWalletTests
                 }
             ],
         };
-        var cashuWallet = new CashuWallet(_localMint, "sat", CreateDb());
+        var cashuWallet = new StatefulWallet(_localMint, "sat", CreateDb());
         //Fee bigger tha provided amount
         await Assert.ThrowsAsync<CashuPluginException>(async () => await cashuWallet.Receive(invalidToken.Proofs, 4));
     }   
@@ -455,7 +455,7 @@ public class CashuWalletTests
     [Fact]
     public async Task Receive_Throws()
     {
-        var cashuWallet = new CashuWallet(_localMint, "sat", CreateDb());
+        var cashuWallet = new StatefulWallet(_localMint, "sat", CreateDb());
 
         var invalidToken = new CashuUtils.SimplifiedCashuToken()
         {
@@ -494,9 +494,9 @@ public class CashuWalletTests
         var token = CashuUtils.SimplifyToken(CashuTokenHelper.Decode(tokenStr, out _));
         var singleUnitPrice = 1;
         
-        var wallet = new CashuWallet(_lightningClient, _localMint, "sat", CreateDb());
+        var wallet = new StatefulWallet(_lightningClient, _localMint, "sat", CreateDb());
         var keysets = await wallet.GetKeysets();
-        var result = await wallet.CreateMeltQuote(token, singleUnitPrice, keysets);
+        var result = await wallet.CreateMaxMeltQuote(token, singleUnitPrice, keysets);
         
         //My local nutshell instance is configured for 2% fee reserve. For 100 sats it should be 2 sat
         //Also, there's no input fee
@@ -518,10 +518,10 @@ public class CashuWalletTests
         var token = CashuUtils.SimplifyToken(CashuTokenHelper.Decode(tokenStr, out _));
         var singleUnitPrice = 1;
     
-        var wallet = new CashuWallet(_localMint);
+        var wallet = new StatefulWallet(_localMint);
         var keysets = await wallet.GetKeysets();
 
-        var response = await wallet.CreateMeltQuote(token, singleUnitPrice, keysets);
+        var response = await wallet.CreateMaxMeltQuote(token, singleUnitPrice, keysets);
         Assert.False(response.Success);
         Assert.NotNull(response.Error);
         Assert.Null(response.MeltQuote);
@@ -537,9 +537,9 @@ public class CashuWalletTests
         var token = CashuUtils.SimplifyToken(CashuTokenHelper.Decode(tokenStr, out _));
         var singleUnitPrice = 1;
         
-        var wallet = new CashuWallet(_lightningClient, _testnutMint, "sat", CreateDb());
+        var wallet = new StatefulWallet(_lightningClient, _testnutMint, "sat", CreateDb());
         var keysets = await wallet.GetKeysets();
-        var result = await wallet.CreateMeltQuote(token, singleUnitPrice, keysets);
+        var result = await wallet.CreateMaxMeltQuote(token, singleUnitPrice, keysets);
         
         // Math.Ceiling(18*100/1000) = 2
         var keysetFee = token.Proofs.ComputeFee(keysets.ToDictionary(k => k.Id, k => k.InputFee??0));
@@ -559,7 +559,7 @@ public class CashuWalletTests
     [Fact]
     public async Task CreateMeltQuote_InvalidToken_Throws()
     {
-        var cashuWallet = new CashuWallet(_lightningClient, _testnutMint, "sat", CreateDb());
+        var cashuWallet = new StatefulWallet(_lightningClient, _testnutMint, "sat", CreateDb());
         var keysets = await cashuWallet.GetKeysets();
         var invalidToken = new CashuUtils.SimplifiedCashuToken()
         {
@@ -577,7 +577,7 @@ public class CashuWalletTests
             ],
         };
         //Invalid token - can't verify mints signature
-        var result = await cashuWallet.CreateMeltQuote(invalidToken, 1, keysets);
+        var result = await cashuWallet.CreateMaxMeltQuote(invalidToken, 1, keysets);
         Assert.False(result.Success);
         Assert.IsType<CashuProtocolException>(result.Error);
     }
@@ -593,9 +593,9 @@ public class CashuWalletTests
         var tokenStr = "cashuBo2F0gaJhaUgAFo194X2Lm2FwhaNhYRggYXN4QDI4ZWVhNjVkYmY2NjZhYjE1ZDEwMDE0NDVjN2FiNzk2OTY2MjA4Yjg2ODFlYjg0ZDI4MDFmODI5MDIwMDEzOGZhY1ghAidYlTXPlxo9AsMUxBp7s_9KdcMQPflFuCy1o1nmAcNzo2FhGCBhc3hANTZlYTg4NTNhZGU3NmZhODYzMjQ5YTgyYzdhMGY4MmY1Y2M3OWUyZTkwOWQwMzk3NzVkOGE4ZGZhNWY0MjBmMWFjWCEDrYJsBQ8dzScui0_A1XyhqwfJOAQkWpupFuT_i8dtJ9mjYWEQYXN4QGFkMzhiMjYwNzY1YWM1MzQxYTlhZTI3OWNlMjBhNTIzZTYyMTM4NDgxZmFhNmExMjdkNzVmYzUzODg4OTYwMzNhY1ghAorZGGSs2Drh8qSfSOugvR20-Xuy3KyVx328qz88YRF3o2FhEGFzeEBkN2JjZTNiZDlkMTY1NjNjNjRmYTkzNDE4NGJjNTc4YWJmNzAwMDBiYzU1NmE2Yzk4Yzg3YTJmN2MxZmZhNDE3YWNYIQJHElr2xbbZiT4AL3Rnunp5YjhrobeMU0lDOW8vNrVhR6NhYQRhc3hANzc2NjhhZjkyNmZkMTA2MmNlZjU2ZmEzZGFlMWJlZDJhOTE3NjdmMmJlYjg1ZDg5Nzc0NjliMGMyZTMwYzQxZGFjWCECioqg0Jh2Xk5HSa7b9T3irEraTOy2K_kjyWZZlne7YmBhbXVodHRwOi8vMTI3LjAuMC4xOjMzMzhhdWNzYXQ";
         var token = CashuUtils.SimplifyToken(CashuTokenHelper.Decode(tokenStr, out _));
         var singleUnitPrice = 1;
-        var wallet = new CashuWallet(_lightningClient, _localMint, "sat", CreateDb());
+        var wallet = new StatefulWallet(_lightningClient, _localMint, "sat", CreateDb());
         var keysets = await wallet.GetKeysets();
-        var quote = await wallet.CreateMeltQuote(token, singleUnitPrice, keysets);
+        var quote = await wallet.CreateMaxMeltQuote(token, singleUnitPrice, keysets);
         Assert.NotNull(quote.MeltQuote);
         Assert.NotNull(quote.Invoice);
         
@@ -625,9 +625,9 @@ public class CashuWalletTests
         var tokenStr = "cashuBo2F0gaJhaUgAFo194X2Lm2Fwg6NhYQRhc3hAZWQzZDc5ZmY1ZWQzMDZiZGNhYzc5MTc4OGYyM2YxNDhhYmFmZDM3Yzg2MDM0YzYxMTVmOWNkZGYxNDk3ZjNmYWFjWCECFabppMb7eJW2bXk8oC1eEz28fjT1IOduvf3HqkRgVm6jYWEYIGFzeEBkNDUwNGVkNTdmNjE4YjMwNmE2YjA4ZDI2NjI4ZGUzZjgwNzBhZDg5ZTY4OTM1NjE4Njc0ZTBiOWIwZWEzYzAzYWNYIQPWWa_yGY5yVxLkMYydiTusJwyAvieLdGyi81ge2s5qpKNhYRhAYXN4QDZkNWIyOGQyZDhjYmNkOTlkYTI5MjkxNGQ0ZDZlYzk5ZTE2M2FlNjI0NjQwNmE5MmIxNWQzMTg2NjMzZWMwODhhY1ghA6_wYZIKyYCBkNKgT6eLW2CFNY6wuVcsoAdERoov8WTTYW11aHR0cDovLzEyNy4wLjAuMTozMzM4YXVjc2F0";
         var token = CashuUtils.SimplifyToken(CashuTokenHelper.Decode(tokenStr, out _));
         var singleUnitPrice = 1;
-        var wallet = new CashuWallet(_lightningClient, _localMint, "sat", CreateDb());
+        var wallet = new StatefulWallet(_lightningClient, _localMint, "sat", CreateDb());
         var keysets = await wallet.GetKeysets();
-        var quote = await wallet.CreateMeltQuote(token, singleUnitPrice, keysets);
+        var quote = await wallet.CreateMaxMeltQuote(token, singleUnitPrice, keysets);
         //melt
         var result = await wallet.Melt(quote.MeltQuote, token.Proofs);
         Assert.False(result.Success);
@@ -656,9 +656,9 @@ public class CashuWalletTests
         };
         
         var singleUnitPrice = 1;
-        var wallet = new CashuWallet(_lightningClient, _localMint, "sat", CreateDb());
+        var wallet = new StatefulWallet(_lightningClient, _localMint, "sat", CreateDb());
         var keysets = await wallet.GetKeysets();
-        var quote = await wallet.CreateMeltQuote(invalidToken, singleUnitPrice, keysets);
+        var quote = await wallet.CreateMaxMeltQuote(invalidToken, singleUnitPrice, keysets);
         //melt
         var result = await wallet.Melt(quote.MeltQuote, invalidToken.Proofs);
         Assert.False(result.Success);
@@ -670,9 +670,9 @@ public class CashuWalletTests
         var tokenStr = "cashuBo2F0gaJhaUgAFo194X2Lm2FwhqNhYQJhc3hAODhmODg1ZjQwMDJkZDNkMGM4MDUwNWEwMGZhMGRjNzFhOWEyMTdlMzY3ZGFlZjRiMWM4N2Y4MDA4YjI3YzgyYWFjWCECLdMmvfiGAh5NlaCGk3ffGURLV2_JxecA1lVO45mPVM6jYWECYXN4QGI0YTJhNTU4YzZjMzBmM2Y5YzA3ZWQwYWFkZmZmZDliMzZjNTBjY2M3NzI5MGNhMGE5YzQxYmVhNDRhNGU5NTBhY1ghA47duf7y3PAv89VHOixo7Rn8NaetZj0bSTAG8_8gTMJMo2FhAmFzeEAwMmNkNmUzNzg3NDM5OTFjZmJiNGZkY2ZlZDQ0YmQzODI3MTJiYjY2MWUxMDRlMjY1MzVmMmIwZjc5ZjA5MWUzYWNYIQNTjy8arg5rLvt6u8vCRQDga1Wz6qb7znUtnI1vYa0dz6NhYQJhc3hAYTFiYjIzNjg5YTk4YzQ1MTg0MjlmZDk3MTVhYWYxMGNiNGNlMzcxNGM2NDBjMTg0ZjM0YjMwMGEwMDllOWYyZWFjWCEDXOuDv9qEyuHBg7s684oyrW58lhOdVzy7CLxHc-ynl_ujYWEBYXN4QDg3NTYzM2MxOWZhY2FkODE5ZTMyNzQ5ZjQ3NGIxNzU0NzYxMTE5MTIxOGFlZWVjYTVlMzYwNmQ0ODBkYTQ2MDRhY1ghA7LjyhGUAAvP4Z9u8wrMSCY2M63DZUvnAfj7Dq8MoVMgo2FhAWFzeEBhYjRmNmQ0NzM3NmU5YjYyZjdmOWRlYjA4YWNjOWIyNWMwZDQxODliMjBmZTMwOTM5ZTY1NWMwNWM1MWUzNTc3YWNYIQOPpoOK61Zxg7H2mIF2WSOVOPlDQ8c_0Km9hGWsg66MiWFtdWh0dHA6Ly8xMjcuMC4wLjE6MzMzOGF1Y3NhdA";
         decimal rate = 3; //it's sat token so rate is faked to be 3x bigger
         var token = CashuUtils.SimplifyToken(CashuTokenHelper.Decode(tokenStr, out _));
-        var wallet = new CashuWallet(_lightningClient, _localMint, "sat", CreateDb());
+        var wallet = new StatefulWallet(_lightningClient, _localMint, "sat", CreateDb());
         var keysets = await wallet.GetKeysets();
-        var quote = await wallet.CreateMeltQuote(token, rate, keysets);
+        var quote = await wallet.CreateMaxMeltQuote(token, rate, keysets);
         //melt
         var result = await wallet.Melt(quote.MeltQuote, token.Proofs);
         Assert.False(result.Success);

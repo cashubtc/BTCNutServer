@@ -30,7 +30,7 @@ public static class CashuUtils
         var client = new HttpClient { BaseAddress = mintUri };
         //Some operations, like Melt can take a long time. But 5 minutes should be more than ok.
         client.Timeout = TimeSpan.FromMinutes(5);
-        var cashuClient = new CashuHttpClient(client);
+        var cashuClient = new CashuHttpClient(client, true);
         return cashuClient;
     }
 
