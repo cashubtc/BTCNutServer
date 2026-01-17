@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -8,88 +7,86 @@ using BTCPayServer.Plugins.Cashu.Data.Models;
 using DotNut;
 using DotNut.Abstractions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace BTCPayServer.Plugins.Cashu.CashuAbstractions;
 
 public class DbCounter : ICounter
 {
-    private CashuDbContextFactory _dbContextFactory = null;
-    private string _storeId;
-    
-    public DbCounter(CashuDbContextFactory cashuDbContextFactory, string storeId)
+    private readonly CashuDbContextFactory _dbContextFactory;
+    private readonly string _storeId;
+
+    public DbCounter(CashuDbContextFactory dbContextFactory, string storeId)
     {
-        this._dbContextFactory = cashuDbContextFactory;
-        this._storeId = storeId;
+        _dbContextFactory = dbContextFactory;
+        _storeId = storeId;
     }
-    
+
     public async Task<uint> GetCounterForId(KeysetId keysetId, CancellationToken ct = default)
     {
         await using var db = _dbContextFactory.CreateContext();
-        var counter = await db.StoreKeysetCounters
-            .SingleOrDefaultAsync(c => c.KeysetId == keysetId && c.StoreId == _storeId, ct );
-        if (counter.StoreId == null)
-        {
-            return 0;
-        }
+        var entry = await db.StoreKeysetCounters
+            .FirstOrDefaultAsync(c => c.StoreId == _storeId && c.KeysetId == keysetId, ct);
 
-        return counter.Counter;
+        return entry?.Counter ?? 0;
     }
 
     public async Task<uint> IncrementCounter(KeysetId keysetId, uint bumpBy = 1, CancellationToken ct = default)
     {
         await using var db = _dbContextFactory.CreateContext();
-        var counter = await db.StoreKeysetCounters
-            .SingleOrDefaultAsync(c => c.KeysetId == keysetId && c.StoreId == _storeId, ct);
-        
-        if (counter == null)
+        var entry = await db.StoreKeysetCounters
+            .FirstOrDefaultAsync(c => c.StoreId == _storeId && c.KeysetId == keysetId, ct);
+
+        uint newValue;
+        if (entry == null)
         {
-            counter = new StoreKeysetCounter
+            newValue = bumpBy;
+            db.StoreKeysetCounters.Add(new StoreKeysetCounter
             {
                 StoreId = _storeId,
                 KeysetId = keysetId,
-                Counter = 0
-            };
-            db.StoreKeysetCounters.Add(counter);
+                Counter = newValue
+            });
         }
-        
-        counter.Counter += bumpBy;
+        else
+        {
+            entry.Counter += bumpBy;
+            newValue = entry.Counter;
+        }
+
         await db.SaveChangesAsync(ct);
-        return counter.Counter;
+        return newValue;
     }
 
-    public async Task SetCounter(KeysetId keysetId, uint value, CancellationToken ct)
+    public async Task SetCounter(KeysetId keysetId, uint counter, CancellationToken ct = default)
     {
         await using var db = _dbContextFactory.CreateContext();
-        var counter = await db.StoreKeysetCounters
-            .SingleOrDefaultAsync(c => c.KeysetId == keysetId && c.StoreId == _storeId, ct);
-        
-        if (counter == null)
+        var entry = await db.StoreKeysetCounters
+            .FirstOrDefaultAsync(c => c.StoreId == _storeId && c.KeysetId == keysetId, ct);
+
+        if (entry == null)
         {
-            counter = new StoreKeysetCounter
+            db.StoreKeysetCounters.Add(new StoreKeysetCounter
             {
                 StoreId = _storeId,
                 KeysetId = keysetId,
-                Counter = 0
-            };
-            db.StoreKeysetCounters.Add(counter);
+                Counter = counter
+            });
+        }
+        else
+        {
+            entry.Counter = counter;
         }
 
-        counter.Counter = value;
         await db.SaveChangesAsync(ct);
     }
 
     public async Task<IReadOnlyDictionary<KeysetId, uint>> Export()
     {
         await using var db = _dbContextFactory.CreateContext();
-        return await db.StoreKeysetCounters
+        var counters = await db.StoreKeysetCounters
             .Where(c => c.StoreId == _storeId)
-            .ToDictionaryAsync(c => c.KeysetId, c => c.Counter);
-    }
+            .ToListAsync();
 
-    public static ICounter GetCounterForStore(IServiceProvider serviceProvider, string storeId)
-    {
-        var dbContextFactory = serviceProvider.GetRequiredService<CashuDbContextFactory>();
-        return new DbCounter(dbContextFactory, storeId);
+        return counters.ToDictionary(c => c.KeysetId, c => c.Counter);
     }
 }
