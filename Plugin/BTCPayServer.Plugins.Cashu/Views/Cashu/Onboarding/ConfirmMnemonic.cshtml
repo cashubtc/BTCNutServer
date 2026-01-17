@@ -112,12 +112,15 @@
 </style>
 }
 
+@section Navbar {
+    <a asp-controller="UICashuOnboarding" asp-action="CreateMnemonic" asp-route-storeId="@Context.GetStoreData().Id">
+        <vc:icon symbol="back" />
+    </a>
+}
+
 <main>
-    <partial name="_StatusMessage" />
+    @* <partial name="_StatusMessage" /> *@
     <div class="d-inline-flex flex-column align-items-center justify-content-center">
-        <a asp-controller="UICashuOnboarding" asp-action="CreateMnemonic" asp-route-storeId="@Context.GetStoreData().Id">
-            <vc:icon symbol="back" />
-        </a>
         <div class="text-warning mb-3">
             <vc:icon symbol="warning"/>
         </div>

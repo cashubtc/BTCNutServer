@@ -66,8 +66,9 @@ public static class CashuUtils
             new PostMintQuoteBolt11Request { Amount = 1000, Unit = unit });
         var paymentRequest = mintQuote.Request;
 
-
-        if (!BOLT11PaymentRequest.TryParse(paymentRequest, out var parsedPaymentRequest, network))
+        //todo change after development
+        // if (!BOLT11PaymentRequest.TryParse(paymentRequest, out var parsedPaymentRequest, network))
+        if (!BOLT11PaymentRequest.TryParse(paymentRequest, out var parsedPaymentRequest, Network.Main))
         {
             throw new Exception("Invalid BOLT11 payment request.");
         }
@@ -174,7 +175,7 @@ public static class CashuUtils
     /// <param name="keysetId">Active keyset id which will sign outputs</param>
     /// <param name="keys">Keys for given KeysetId</param>
     /// <returns>Blank Outputs</returns>
-    public static OutputData CreateBlankOutputs(ulong amount, KeysetId keysetId, Keyset keys, DotNut.NBitcoin.BIP39.Mnemonic? mnemonic = null, int? counter = null)
+    public static OutputData CreateBlankOutputs(ulong amount, KeysetId keysetId, Keyset keys, DotNut.NBitcoin.BIP39.Mnemonic? mnemonic = null, uint? counter = null)
     {
         if (amount == 0)
         {
@@ -201,7 +202,7 @@ public static class CashuUtils
         KeysetId keysetId,
         Keyset keys,
         DotNut.NBitcoin.BIP39.Mnemonic? mnemonic = null,
-        int? counter = null)
+        uint? counter = null)
     {
         if (amounts.Any(a => !keys.Keys.Contains(a)))
             throw new ArgumentException("Invalid amounts");

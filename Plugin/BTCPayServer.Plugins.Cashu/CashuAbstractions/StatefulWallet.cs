@@ -28,6 +28,7 @@ public class StatefulWallet
     private readonly string _unit;
     private readonly CashuDbContextFactory? _dbContextFactory;
     public bool HasLightningClient => _lightningClient is not null;
+    
     public StatefulWallet(ILightningClient lightningClient, string mint, string unit = "sat", CashuDbContextFactory? cashuDbContextFactory = null)
     {
         _lightningClient = lightningClient;

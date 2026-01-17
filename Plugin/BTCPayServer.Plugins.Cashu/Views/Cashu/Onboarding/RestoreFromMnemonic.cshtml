@@ -7,7 +7,7 @@
 }
 
 @section Navbar {
-    <a asp-controller="UICashuOnboarding" asp-action="GettingStarted">
+    <a asp-controller="UICashuOnboarding" asp-action="GettingStarted" asp-route-storeId="@Context.GetStoreData().Id">
         <vc:icon symbol="back" />
     </a>
 }

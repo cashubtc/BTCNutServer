@@ -23,7 +23,7 @@ public class DbCounter : ICounter
         this._storeId = storeId;
     }
     
-    public async Task<int> GetCounterForId(KeysetId keysetId, CancellationToken ct = default)
+    public async Task<uint> GetCounterForId(KeysetId keysetId, CancellationToken ct = default)
     {
         await using var db = _dbContextFactory.CreateContext();
         var counter = await db.StoreKeysetCounters
@@ -36,7 +36,7 @@ public class DbCounter : ICounter
         return counter.Counter;
     }
 
-    public async Task<int> IncrementCounter(KeysetId keysetId, int bumpBy = 1, CancellationToken ct = default)
+    public async Task<uint> IncrementCounter(KeysetId keysetId, uint bumpBy = 1, CancellationToken ct = default)
     {
         await using var db = _dbContextFactory.CreateContext();
         var counter = await db.StoreKeysetCounters
@@ -58,7 +58,7 @@ public class DbCounter : ICounter
         return counter.Counter;
     }
 
-    public async Task SetCounter(KeysetId keysetId, int value, CancellationToken ct)
+    public async Task SetCounter(KeysetId keysetId, uint value, CancellationToken ct)
     {
         await using var db = _dbContextFactory.CreateContext();
         var counter = await db.StoreKeysetCounters
@@ -79,7 +79,7 @@ public class DbCounter : ICounter
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<IReadOnlyDictionary<KeysetId, int>> Export()
+    public async Task<IReadOnlyDictionary<KeysetId, uint>> Export()
     {
         await using var db = _dbContextFactory.CreateContext();
         return await db.StoreKeysetCounters

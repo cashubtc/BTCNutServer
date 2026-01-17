@@ -33,9 +33,7 @@ public class CashuPaymentMethodHandler(
     public async Task ConfigurePrompt(PaymentMethodContext context)
     {
         var handlers = serviceProvider.GetRequiredService<PaymentMethodHandlerDictionary>();
-        var lightningHandler = (LightningLikePaymentHandler)handlers[PaymentTypes.LN.GetPaymentMethodId(_network.CryptoCode)];
         var store = context.Store;
-        var lnPmi = PaymentTypes.LN.GetPaymentMethodId(_network.CryptoCode);
         
         if (ParsePaymentMethodConfig(store.GetPaymentMethodConfigs()[this.PaymentMethodId]) is not CashuPaymentMethodConfig cashuConfig)
         {
@@ -55,12 +53,10 @@ public class CashuPaymentMethodHandler(
          
         if (cashuConfig.PaymentModel == CashuPaymentModel.HoldWhenTrusted)
         {
-            var lnConfig = lightningHandler.ParsePaymentMethodConfig(store.GetPaymentMethodConfigs()[lnPmi]);
             if (!store.IsLightningEnabled(_network.CryptoCode))
             {
                 throw new PaymentMethodUnavailableException("Melting tokens requires a lightning node to be configured for the store.");
             }
-            var preferOnion = Uri.TryCreate(context.InvoiceEntity.ServerUrl, UriKind.Absolute, out var u) && u.IsOnion();
         }
     }
 

@@ -158,13 +158,16 @@ public class UICashuStoresController : Controller
         {
             return RedirectToAction("GettingStarted", "UICashuOnboarding", new { storeId = StoreData.Id });
         }
+
+        config.FeeConfing ??= new CashuFeeConfig();
         config.FeeConfing.CustomerFeeAdvance = viewModel.CustomerFeeAdvance;
         config.FeeConfing.MaxLightningFee = viewModel.MaxLightningFee;
         config.FeeConfing.MaxKeysetFee = viewModel.MaxKeysetFee;
 
         StoreData.SetPaymentMethodConfig(_handlers[CashuPlugin.CashuPmid], config);
+        await _storeRepository.UpdateStore(StoreData);
         TempData[WellKnownTempData.SuccessMessage] = "Settings saved successfully";
-        return View("Views/Cashu/Settings/FeeSettings.cshtml", viewModel);
+        return RedirectToAction(nameof(Settings),  new { storeId });
     }
 
     [HttpGet("{storeId}/cashu/remove-wallet")]
