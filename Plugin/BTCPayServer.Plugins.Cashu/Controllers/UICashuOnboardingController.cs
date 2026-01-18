@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Client;
@@ -107,6 +108,19 @@ public class UICashuOnboardingController : Controller
         {
             model.InvalidWordIndices = invalidWordIndices;
             model.InvalidMintsIndices = invalidMintsIndices;
+            StringBuilder msg = new StringBuilder();
+            if (invalidWordIndices.Count > 0)
+            {
+                msg.AppendLine($"Invalid word indices: {string.Join(",", invalidWordIndices.Select(i=>i+1))}");
+            }
+
+            if (invalidMintsIndices.Count > 0)
+            {
+                msg.AppendLine($"Invalid mint indices: {string.Join(",", invalidMintsIndices.Select(i=>i+1))}");
+            }
+            
+            TempData[WellKnownTempData.ErrorMessage] = msg.ToString();
+
             return View("Views/Cashu/Onboarding/RestoreFromMnemonic.cshtml", model);
         }
 

@@ -53,14 +53,22 @@
         font-family: var(--btcpay-font-monospace, monospace);
     }
     
-    .invalid-word {
-        
+    .invalid-word.mnemonic-word {
+        border: 2px solid red;
     }
     
-    .invalid-mint-url {
-        
+    .invalid-word.mnemonic-word .num-box {
+        background: red;
     }
 
+    .valid-word.mnemonic-word {
+        border: 2px solid var(--btcpay-green-700);
+    }
+    
+    .valid-word.mnemonic-word .num-box {
+        background: var(--btcpay-green-700);
+    }
+    
     @@media (max-width: 768px) {
         .mnemonic-grid { grid-template-columns: repeat(2, 1fr); }
     }
@@ -101,7 +109,7 @@
                 <div class="mnemonic-grid" id="mnemonic-grid">
                     @for (var i = 0; i < 12; i++)
                     {
-                        <div class="mnemonic-word @(Model.InvalidWordIndices.Contains(i) ? "invalid-word" : "" )">
+                        <div class="mnemonic-word @(String.IsNullOrEmpty(Model.Mnemonic) ? "" : Model.InvalidWordIndices.Contains(i) ? "invalid-word" : "valid-word" )">
                             <div class="num-box">@(i + 1)</div>
                             <input type="text"
                                    class="form-control border-0 shadow-none"
