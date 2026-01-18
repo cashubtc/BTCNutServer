@@ -9,42 +9,94 @@ using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.Models;
 using BTCPayServer.Plugins.Cashu.Errors;
 using DotNut;
-using DotNut.Api;
 using DotNut.ApiModels;
+using DotNut.Abstractions;
+using DotNut.Abstractions.Handlers;
 using Microsoft.EntityFrameworkCore;
+
+using DotNutOutputData = DotNut.Abstractions.OutputData;
+using CashuOutputData = BTCPayServer.Plugins.Cashu.CashuAbstractions.CashuUtils.OutputData;
 
 namespace BTCPayServer.Plugins.Cashu.CashuAbstractions;
 
 /// <summary>
 /// Class leveraging cashu wallet functionalities.
 /// </summary>
-public class StatefulWallet
+public class StatefulWallet: IDisposable
 {
-    private readonly CashuHttpClient _cashuHttpClient;
     private readonly ILightningClient? _lightningClient;
-    private Keyset? _keys;
     private readonly string _mintUrl;
-    private List<GetKeysetsResponse.KeysetItemResponse>? _keysets;
     private readonly string _unit;
     private readonly CashuDbContextFactory? _dbContextFactory;
+    private readonly string? _storeId;
     public bool HasLightningClient => _lightningClient is not null;
     
-    public StatefulWallet(ILightningClient lightningClient, string mint, string unit = "sat", CashuDbContextFactory? cashuDbContextFactory = null)
+    private readonly Wallet _wallet;
+    private bool _initialized;
+    
+    public StatefulWallet(ILightningClient lightningClient, string mint, string unit = "sat", CashuDbContextFactory? cashuDbContextFactory = null, string? storeId = null)
     {
         _lightningClient = lightningClient;
         _mintUrl = mint;
-        _cashuHttpClient = CashuUtils.GetCashuHttpClient(mint);
         _unit = unit;
         _dbContextFactory = cashuDbContextFactory;
+        _storeId = storeId;
+        
+        _wallet = (Wallet)Wallet
+            .Create()
+            .WithMint(CashuUtils.GetCashuHttpClient(mint), true);
     }
     
     //In case of just swapping token and saving in db, store doesn't have to have lighting client configured
-    public StatefulWallet(string mint, string unit = "sat", CashuDbContextFactory? cashuDbContextFactory = null)
+    public StatefulWallet(string mint, string unit = "sat", CashuDbContextFactory? cashuDbContextFactory = null, string? storeId = null)
     {
-        _cashuHttpClient = CashuUtils.GetCashuHttpClient(mint);
         _mintUrl = mint;
         _unit = unit;
         _dbContextFactory = cashuDbContextFactory;
+        _storeId = storeId;
+        
+        _wallet = (Wallet)Wallet
+            .Create()
+            .WithMint(CashuUtils.GetCashuHttpClient(mint), true);
+    }
+
+    private async Task EnsureInitialized()
+    {
+        if (_initialized) return;
+        
+        if (_dbContextFactory != null)
+        {
+            await using var db = _dbContextFactory.CreateContext();
+            var mint = await db.Mints.FirstOrDefaultAsync(m => m.Url == _mintUrl);
+            if (mint != null)
+            {
+                var keysets = await db.MintKeys
+                    .Where(mk => mk.MintId == mint.Id)
+                    .Select(mk => mk.Keyset)
+                    .ToListAsync();
+
+                var keysList = keysets.Select(k => new GetKeysResponse.KeysetItemResponse
+                {
+                    Id = k.GetKeysetId(),
+                    Unit = _unit, 
+                    Keys = k
+                }).ToList();
+                
+                _wallet.WithKeys(keysList);
+            }
+
+            if (_storeId != null)
+            {
+                var walletConfig = await db.CashuWalletConfig.FirstOrDefaultAsync(c => c.StoreId == _storeId);
+                if (walletConfig != null && walletConfig.WalletMnemonic != null)
+                {
+                    _wallet.WithMnemonic(walletConfig.WalletMnemonic);
+                    _wallet.WithCounter(new DbCounter(_dbContextFactory, _storeId));
+                }
+            }
+        }
+        
+        _initialized = true;
     }
 
     /// <summary>
@@ -58,6 +110,8 @@ public class StatefulWallet
     {
         try
         {
+            await EnsureInitialized();
+            
             if (_lightningClient == null)
             {
                 throw new CashuPluginException("Lightning client is not configured");
@@ -72,15 +126,14 @@ public class StatefulWallet
             );
 
             //check the fee reserve for this melt
-            var initialMeltQuote =
-                await _cashuHttpClient.CreateMeltQuote<PostMeltQuoteBolt11Response, PostMeltQuoteBolt11Request>(
-                    "bolt11",
-                    new PostMeltQuoteBolt11Request()
-                    {
-                        Request = initialInvoice.BOLT11,
-                        Unit = token.Unit ?? "sat"
-                    }
-                );
+            var unit = token.Unit ?? "sat";
+            var initialMeltHandler = await _wallet.CreateMeltQuote()
+                .WithUnit(unit)
+                .WithInvoice(initialInvoice.BOLT11)
+                .ProcessAsyncBolt11();
+            
+            var initialMeltQuote = initialMeltHandler.GetQuote();
+
             //calculate the keyset fee
             var keysetFee = token.Proofs.ComputeFee(
                 keysets.ToDictionary(k => k.Id, k => k.InputFee ?? 0)
@@ -101,14 +154,13 @@ public class StatefulWallet
                 )
             );
 
-            var meltQuote = await _cashuHttpClient.CreateMeltQuote<PostMeltQuoteBolt11Response, PostMeltQuoteBolt11Request>(
-                    "bolt11",
-                    new PostMeltQuoteBolt11Request
-                    {
-                        Request = invoiceWithFeesSubtracted.BOLT11,
-                        Unit = token.Unit ?? "sat"
-                    }
-                );
+            var finalMeltHandler = await _wallet.CreateMeltQuote()
+                .WithUnit(unit)
+                .WithInvoice(invoiceWithFeesSubtracted.BOLT11)
+                .ProcessAsyncBolt11();
+            
+            var meltQuote = finalMeltHandler.GetQuote();
+            
             return new CreateMeltQuoteResult
             {
                 Invoice = invoiceWithFeesSubtracted,
@@ -134,53 +186,67 @@ public class StatefulWallet
     /// <returns>Change proofs</returns>
     public async Task<MeltResult> Melt(PostMeltQuoteBolt11Response meltQuote, List<Proof> proofsToMelt, CancellationToken cancellationToken = default)
     {
-        if (_lightningClient == null)
-        {
-            throw new CashuPluginException("Lightning client is not configured");
-        }
-        
-        var activeKeyset = await GetActiveKeyset();
-        var keys = await GetKeys(activeKeyset.Id);
-        if (keys == null || !keys.Any())
-        {
-            throw new CashuPluginException("No keyset available");
-        }
-        
-        var blankOutputs = CashuUtils.CreateBlankOutputs((ulong)meltQuote.FeeReserve, activeKeyset.Id, keys);
-        
-        var request = new PostMeltRequest
-        {
-           Quote = meltQuote.Quote,
-           Inputs = proofsToMelt.ToArray(),
-           Outputs =  blankOutputs.BlindedMessages
-        };
-
+        CashuOutputData? blankOutputsBatch = null;
+        Proof[]? changeProofs = null;
         try
         {
-            var response = await _cashuHttpClient.Melt<PostMeltQuoteBolt11Response, PostMeltRequest>(
-                "bolt11",
-                request, cancellationToken);
-            
-            Proof[]? change = null;
-            
-            if (response?.Change != null && response.Change.Length != 0 && blankOutputs.BlindingFactors.Length >= response.Change.Length )
+            await EnsureInitialized();
+
+            if (_lightningClient == null)
             {
-                change = CashuUtils.CreateProofs(response.Change, blankOutputs.BlindingFactors,
-                    blankOutputs.Secrets, keys);
+                throw new CashuPluginException("Lightning client is not configured");
             }
+            
+            // generate blank outputs manually so we can return them in MeltResult
+            var feeReserve = (ulong)meltQuote.FeeReserve;
+            var activeKeysetId = await _wallet.GetActiveKeysetId(_unit, cancellationToken);
+             if (activeKeysetId == null)
+            {
+                throw new CashuPluginException("No active keyset found for unit " + _unit);
+            }
+            
+            var keys = await GetKeys(activeKeysetId); // ensures loaded/saved
+             if (keys == null || !keys.Any())
+            {
+                throw new CashuPluginException("No keyset available");
+            }
+            
+            // create blank outputs again and use them
+            var blankOutputsList = await _wallet.CreateOutputs(
+                Enumerable.Repeat(1UL, Utils.CalculateNumberOfBlankOutputs(feeReserve)).ToList(),
+                activeKeysetId,
+                cancellationToken
+            );
+            
+            blankOutputsBatch = ConvertOutputData(blankOutputsList);
+
+            var handler = new MeltHandlerBolt11(_wallet, meltQuote, blankOutputsList);
+            
+            changeProofs = (await handler.Melt(proofsToMelt, cancellationToken)).ToArray();
+            
+            // save any new keys that might have been fetched during melt
+            var changeKeysetIds = changeProofs.Select(p => p.Id).Distinct();
+            foreach(var kid in changeKeysetIds)
+            {
+                var k = await _wallet.GetKeys(kid, false, false, cancellationToken);
+                if (k != null) await SaveKeysetToDb(kid, k.Keys);
+            }
+            
+            await SaveProofs(changeProofs);
+
             return new MeltResult()
             {
-                BlankOutputs = blankOutputs,
-                ChangeProofs = change,
-                Quote = response
+                BlankOutputs = blankOutputsBatch,
+                ChangeProofs = changeProofs,
+                Quote = meltQuote
             };
         }
         catch (Exception e)
         {
             return new MeltResult()
             {
-                BlankOutputs = blankOutputs,
-                ChangeProofs = null,
+                BlankOutputs = blankOutputsBatch!, 
+                ChangeProofs = changeProofs, // return proofs if we have them (db failure scenario)
                 Error = e,
                 Quote = meltQuote
             };
@@ -195,6 +261,7 @@ public class StatefulWallet
     /// <returns></returns>
     public async Task<SwapResult> Receive(List<Proof> proofsToReceive, ulong inputFee = 0)
     {
+        await EnsureInitialized();
         var keyset = await GetActiveKeyset();
         var keys = await this.GetKeys(keyset.Id);
 
@@ -213,7 +280,7 @@ public class StatefulWallet
 
         var totalAmount = inputAmount - inputFee;
         
-        amounts = CashuUtils.SplitToProofsAmounts(totalAmount, keys);
+        amounts = Utils.SplitToProofsAmounts(totalAmount, keys!);
         return await Swap(proofsToReceive, amounts, keyset.Id, keys);
     }
 
@@ -227,37 +294,39 @@ public class StatefulWallet
     /// <exception cref="CashuPaymentException"></exception>
     /// 
     /// <returns>Freshly minted proofs</returns>
-    public async Task<SwapResult> Swap(List<Proof> proofsToSwap, List<ulong> amounts, KeysetId? keysetId = null, Keyset? keys = null)
+    public async Task<SwapResult> Swap(List<Proof> proofsToSwap, List<ulong> amounts, KeysetId? keysetId = null, Keyset? keys = null, CancellationToken ct = default)
     {
-        keysetId??= (await GetActiveKeyset()).Id;
-        keys??= await GetKeys(keysetId);
+        await EnsureInitialized();
+        keysetId ??= (await GetActiveKeyset()).Id;
         
-        var outputs = CashuUtils.CreateOutputs(amounts, keysetId, keys);
+        var outputsList = await _wallet.CreateOutputs(amounts, keysetId, ct);
+        var outputsBatch = ConvertOutputData(outputsList);
         
-        var request = new PostSwapRequest()
-        {
-            Inputs = proofsToSwap.ToArray(),
-            Outputs = outputs.BlindedMessages
-        };
+        Proof[]? resultProofs = null;
         try
         {
-            var response = await _cashuHttpClient.Swap(request);
+            resultProofs = (await _wallet.Swap()
+                .FromInputs(proofsToSwap)
+                .ForOutputs(outputsList)
+                .ProcessAsync(ct)).ToArray();
+            
+            await SaveProofs(resultProofs);
+                
             return new SwapResult
             {
-                ProvidedOutputs = outputs,
-                ResultProofs =
-                    CashuUtils.CreateProofs(response.Signatures, outputs.BlindingFactors, outputs.Secrets, keys),
+                ProvidedOutputs = outputsBatch,
+                ResultProofs = resultProofs,
             };
         }
         catch (Exception e)
         {
             return new SwapResult
             {
-                ProvidedOutputs = outputs,
+                ProvidedOutputs = outputsBatch,
+                ResultProofs = resultProofs, // return proofs if network succeeded but something else failed
                 Error = e,
             };
         }
-        
     }
     
     /// <summary>
@@ -268,48 +337,24 @@ public class StatefulWallet
     /// <returns></returns>
     public async Task<Keyset?> GetKeys(KeysetId? keysetId, bool forceRefresh = false)
     {
-        if (!forceRefresh)
-        {
-            
-        }
-        //if there's no keysetsIds in wallet - get them
-        if (_keysets == null)
-        {
-            await this.GetKeysets();
-        }
+        await EnsureInitialized();
         
         // if no keysetId specified - choose active one
         if (keysetId == null)
         {
             var localKeyset = await this.GetActiveKeyset();
-            keysetId = new KeysetId(localKeyset.Id.ToString());
+            keysetId = localKeyset.Id; // localKeyset.Id is KeysetId
         }
 
-        //try to fetch keys from database
-        _keys = await TryLoadKeysetFromDb(keysetId);
+        var keysetResponse = await _wallet.GetKeys(keysetId, true, forceRefresh);
         
-        //if there are keys for this keyset - return them
-        if (_keys != null && _keys.GetKeysetId() == keysetId)
+        if (keysetResponse?.Keys != null)
         {
-            return _keys;
+            await SaveKeysetToDb(keysetId, keysetResponse.Keys);
+            return keysetResponse.Keys;
         }
         
-        var keys =  await _cashuHttpClient.GetKeys(keysetId);
-        
-        if (keys.Keysets == null||keys.Keysets.Length == 0)
-        {
-            throw new CashuPluginException("Couldn't fetch keys for provided keyset");
-        }
-        
-        //When we fetch keyset for given ID, it should be always returned as single element.
-        _keys = keys.Keysets.FirstOrDefault()?.Keys;
-
-        if (_keys!=null)
-        {
-            await SaveKeysetToDb(keysetId, _keys);
-        }
-        
-        return _keys;
+        return null;
     }
 
     /// <summary>
@@ -318,28 +363,31 @@ public class StatefulWallet
     /// <returns></returns>
     public async Task<List<GetKeysetsResponse.KeysetItemResponse>> GetKeysets()
     {
-        // Always fetch the current keysets from the mint
-        var getKeysetResponse = await _cashuHttpClient.GetKeysets();
-        var keysets = getKeysetResponse.Keysets.Where(k=>k.Id.ToString().Length==16).ToList();
-        _keysets = keysets;
+        await EnsureInitialized();
+        var keysets = await _wallet.GetKeysets();
         
-        // If we have a database context, check for missing keysets and fetch their keys
-        if (_dbContextFactory == null)
+        if (_dbContextFactory != null)
         {
-            return _keysets;
+            // Check missing in DB
+             await using var db = _dbContextFactory.CreateContext();
+             var mint = await GetOrCreateMintInDb(db);
+             var dbKeysets = await db.MintKeys
+                .Where(mk => mk.MintId == mint.Id)
+                .Select(mk => mk.KeysetId.ToString())
+                .ToListAsync();
+             
+             var missing = keysets
+                .Where(k => !dbKeysets.Contains(k.Id.ToString()) && k.Active)
+                .ToList();
+             
+             foreach(var m in missing)
+             {
+                 // Fetch and save
+                 await GetKeys(m.Id);
+             }
         }
-        await using var db = _dbContextFactory.CreateContext();
-        var missingKeysetIds = await GetMissingKeysetIds();
-        if (missingKeysetIds == null)
-        {
-            return _keysets;
-        }
-        foreach (var keysetId in missingKeysetIds)
-        {
-            // Fetch keys for this keyset and store them
-            await GetKeys(keysetId, true);
-        }
-        return _keysets;
+        
+        return keysets;
     }
     
     
@@ -349,23 +397,16 @@ public class StatefulWallet
     /// <returns></returns>
     public async Task<GetKeysetsResponse.KeysetItemResponse> GetActiveKeyset()
     {
-        if (this._keysets == null)
-        {
-            await this.GetKeysets();
-        }
-        if (this._keysets == null)
-        {
-            throw new CashuPluginException("Couldn't get keysets!");
-        }
-        var filteredKeysets = _keysets.Where(
+        await EnsureInitialized();
+        
+        var keysets = await _wallet.GetKeysets();
+        
+        var filteredKeysets = keysets.Where(
             keyset => keyset.Active && keyset.Id.ToString().StartsWith("00") && keyset.Unit == _unit);
         var activeKeyset = filteredKeysets.OrderBy(keyset => keyset.InputFee).FirstOrDefault();
-        if (activeKeyset == null)
-        {
-            throw new CashuPluginException("Could not find active keyset for this unit!");
-        }
-        return activeKeyset;
+        return activeKeyset ?? throw new CashuPluginException("Could not find active keyset for this unit!");
     }
+    
     /// <summary>
     /// Check if mint exists in database. If not, create it. It basically allows you to tie keys to this mint in db.
     /// </summary>
@@ -415,57 +456,24 @@ public class StatefulWallet
         await db.SaveChangesAsync();
     }
     
-    /// <summary>
-    /// If there's no matching mint in database, add new entry
-    /// </summary>
-    /// <param name="keysetId"></param>
-    /// <returns></returns>
-    private async Task<Keyset?> TryLoadKeysetFromDb(KeysetId keysetId)
+    private async Task SaveProofs(IEnumerable<Proof> proofs)
     {
-        if (_dbContextFactory == null) return null;
+        if (_dbContextFactory == null || _storeId == null) return;
         
         await using var db = _dbContextFactory.CreateContext();
         var mint = await GetOrCreateMintInDb(db);
         
-        var entry = await db.MintKeys.FirstOrDefaultAsync(mk => 
-            mk.MintId == mint.Id && mk.KeysetId == keysetId);
-            
-        return entry?.Keyset;
-    }
-    
-    /// <summary>
-    /// Function getting keysets that aren't stored in database. Since keysetId is derived from keyset, it won't be changed, so it can be stored against it.
-    /// </summary>
-    /// <returns>List of KeysetItemResponse</returns>
-    private async Task<List<KeysetId>?> GetMissingKeysetIds()
-    {
-        if (_dbContextFactory == null)
-        {
-            return _keysets?.Select(k => k.Id).ToList();
-        }
-        await using var db = _dbContextFactory.CreateContext();
-        var mint = await GetOrCreateMintInDb(db);
-        var dbKeysets = await db.Set<MintKeys>()
-            .Where(mk => mk.MintId == mint.Id)
-            .Select(mk => mk.KeysetId.ToString())
-            .ToListAsync();
+        var dbProofs = StoredProof.FromBatch(proofs, _storeId);
+        db.Proofs.AddRange(dbProofs);
         
-        // Find keysets that are not in the database
-        return _keysets?.Where(k => !dbKeysets.Contains(k.Id.ToString()))
-            .Select(k => new KeysetId(k.Id.ToString()))
-            .ToList();
+        await db.SaveChangesAsync();
     }
 
     public async Task<StateResponseItem.TokenState> CheckTokenState(List<Proof> proofs)
     {
-        var yBytes = proofs.Select(p => p.Secret.ToCurve().ToBytes());
-        var ysStrings = yBytes.Select(y=>Convert.ToHexString(y).ToLower()).ToArray();
-        
-        var request = new PostCheckStateRequest
-        { 
-            Ys = ysStrings
-        };
-        var response = await _cashuHttpClient.CheckState(request);
+        await EnsureInitialized();
+        // DotNut Wallet has CheckState taking proofs
+        var response = await _wallet.CheckState(proofs);
 
         if (response.States.Any(r => r.State == StateResponseItem.TokenState.SPENT))
             return StateResponseItem.TokenState.SPENT; 
@@ -483,9 +491,11 @@ public class StatefulWallet
 
     public async Task<PostRestoreResponse> RestoreProofsFromInputs(BlindedMessage[] blindedMessages, CancellationToken cts = default)
     {
+        await EnsureInitialized();
+        
+        var api = await _wallet.GetMintApi(cts);
         var payload = new PostRestoreRequest { Outputs = blindedMessages };
-        var response = await this._cashuHttpClient.Restore(payload, cts);
-        return response;
+        return await api.Restore(payload, cts);
     }
 
     public async Task<bool> ValidateLightningInvoicePaid(string? invoiceId)
@@ -506,10 +516,26 @@ public class StatefulWallet
 
     public async Task<PostMeltQuoteBolt11Response> CheckMeltQuoteState(string meltQuoteId, CancellationToken cts = default)
     {
-        return await this._cashuHttpClient.CheckMeltQuote<PostMeltQuoteBolt11Response>("bolt11", meltQuoteId, cts);
+        await EnsureInitialized();
+        var api = await _wallet.GetMintApi(cts);
+        return await api.CheckMeltQuote<PostMeltQuoteBolt11Response>("bolt11", meltQuoteId, cts);
 
     }
     
+    private static CashuOutputData ConvertOutputData(List<DotNutOutputData> outputDataList)
+    {
+        return new CashuOutputData
+        {
+            BlindedMessages = outputDataList.Select(od => od.BlindedMessage).ToArray(),
+            Secrets = outputDataList.Select(od => od.Secret).ToArray(),
+            BlindingFactors = outputDataList.Select(od => od.BlindingFactor).ToArray()
+        };
+    }
+
+    public void Dispose()
+    {
+        _wallet.Dispose();
+    }
 }
 
 

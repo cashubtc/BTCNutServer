@@ -2,6 +2,7 @@
 using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Hosting;
 using BTCPayServer.Payments;
+using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.PaymentHandlers;
 using BTCPayServer.Plugins.Cashu.Services;
@@ -35,6 +36,7 @@ public class CashuPlugin : BaseBTCPayServerPlugin
         services.AddSingleton<CashuPaymentService>();
         services.AddSingleton<RestoreService>();
         services.AddHostedService(s=>s.GetRequiredService<RestoreService>());
+        services.AddSingleton<StatefulWalletFactory>();
         // services.AddSingleton<WebsocketService>();
         
         //Ui extensions

@@ -40,6 +40,7 @@ public class CashuPaymentService
     private readonly Logs _logs;
     private readonly PaymentService _paymentService;
     private readonly StoreRepository _storeRepository;
+    private readonly StatefulWalletFactory _statefulWalletFactory;
     
     public CashuPaymentService(
         StoreRepository storeRepository,
@@ -49,6 +50,7 @@ public class CashuPaymentService
         LightningClientFactoryService lightningClientFactoryService,
         IOptions<LightningNetworkOptions> lightningNetworkOptions,
         CashuDbContextFactory cashuDbContextFactory,
+        StatefulWalletFactory statefulWalletFactory,
         Logs logs)
     {
         _storeRepository = storeRepository;
@@ -58,6 +60,7 @@ public class CashuPaymentService
         _lightningClientFactoryService = lightningClientFactoryService;
         _lightningNetworkOptions = lightningNetworkOptions;
         _cashuDbContextFactory = cashuDbContextFactory;
+        _statefulWalletFactory = statefulWalletFactory;
         _logs = logs;
     }
 
@@ -144,10 +147,25 @@ public class CashuPaymentService
             invoice.StoreId, 
             invoiceAmount.Satoshi
         );
+
+        var wallet = await _statefulWalletFactory.CreateAsync(storeData.Id, simplifiedToken.Mint, simplifiedToken.Unit);
+        
+        if (cashuPaymentMethodConfig.PaymentModel == CashuPaymentModel.AutoConvert)
+        {
+            await HandleMeltOperation(
+                wallet,
+                invoice,
+                storeData,
+                simplifiedToken,
+                handler as CashuPaymentMethodHandler,
+                singleUnitSatoshiWorth,
+                cashuPaymentMethodConfig.FeeConfing
+            );
+            return;
+        }
         
         if (cashuPaymentMethodConfig.TrustedMintsUrls.Contains(simplifiedToken.Mint))
         {
-            var wallet = new StatefulWallet(simplifiedToken.Mint, simplifiedToken.Unit, _cashuDbContextFactory);
             await EnsureTokenSpendable(wallet, simplifiedToken.Proofs);
             await HandleSwapOperation(
                 wallet,
@@ -166,8 +184,6 @@ public class CashuPaymentService
         {
             case CashuPaymentModel.HoldWhenTrusted:
             {
-                var lnClient = GetStoreLightningClient(storeData, network);
-                var wallet = new StatefulWallet(lnClient, simplifiedToken.Mint, simplifiedToken.Unit, _cashuDbContextFactory);
                 await EnsureTokenSpendable(wallet, simplifiedToken.Proofs);
                 await HandleMeltOperation(
                     wallet,
@@ -184,6 +200,7 @@ public class CashuPaymentService
             {
                 throw new CashuPaymentException("Can't process this payment. Merchant can't trust this mint.");
             }
+            case CashuPaymentModel.AutoConvert: // this should never happen
             default:
             {
                 throw new Exception("Unknown cashu payment model");
@@ -284,8 +301,11 @@ public class CashuPaymentService
                     
                     await AddProofsToDb(pollResult.ResultProofs!, ftx.StoreId, ftx.MintUrl);
                     await RegisterCashuPayment(invoice, handler, Money.Satoshis(tokenSatoshiWorth));
-                    break;
+                    return;
                 }
+                default:
+                    _logs.PayServer.LogError("(Cashu) Swap failed: {ex}", swapResult.Error?.Message);
+                    throw new CashuPaymentException("Swap failed processing.");
             }
         }
         
@@ -313,7 +333,6 @@ public class CashuPaymentService
             _logs.PayServer.LogError("(Cashu) Mint returned less signatures than requested for transaction {tx}. Merchant received payment, but still marked as unpaid.", invoice.Id);
             //TODO: Pay partially
         }
-        await AddProofsToDb(swapResult.ResultProofs, invoice.StoreId, token.Mint);
         await RegisterCashuPayment(invoice, handler, Money.Satoshis(tokenSatoshiWorth));
     }
 
@@ -417,8 +436,7 @@ public class CashuPaymentService
             var overpaidFeesReturned = Money.Satoshis(meltResponse.ChangeProofs?.Select(p=>p.Amount).Sum()*unitPrice??0);
             var amountPaid =  amountMelted + overpaidFeesReturned; 
             
-            //add overpaid ln fees proofs to the db and register payment
-            await AddProofsToDb(meltResponse.ChangeProofs, store.Id, token.Mint);
+            
             await RegisterCashuPayment(invoice, handler, amountPaid); 
             
             _logs.PayServer.LogInformation(
@@ -427,6 +445,7 @@ public class CashuPaymentService
                 overpaidFeesReturned.Satoshi, 
                 amountPaid.Satoshi
             );
+            return;
         }
 
         if (meltResponse.Error is CashuProtocolException)
@@ -635,7 +654,7 @@ public class CashuPaymentService
         //If the invoice is paid, we should process the payment, even though if change isn't received.
         if (lnInvoice.Status == LightningInvoiceStatus.Paid)
         {
-            var wallet = new StatefulWallet(ftx.MintUrl, ftx.Unit);
+            var wallet = await _statefulWalletFactory.CreateAsync(ftx.StoreId, ftx.MintUrl, ftx.Unit);
 
             try
             {
@@ -699,7 +718,7 @@ public class CashuPaymentService
         {
             throw new InvalidOperationException($"Unexpected operation type: {ftx.OperationType}");
         }
-        var wallet = new StatefulWallet(ftx.MintUrl, ftx.Unit);
+        var wallet = await _statefulWalletFactory.CreateAsync(ftx.StoreId, ftx.MintUrl, ftx.Unit);
         try
         {
             //first check if token is spent. if not - don't care
