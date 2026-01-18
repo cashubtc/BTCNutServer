@@ -1,6 +1,8 @@
 #nullable enable
 using System;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using BTCPayServer.Controllers;
 using BTCPayServer.Plugins.Cashu.CashuAbstractions;
@@ -10,7 +12,6 @@ using DotNut;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json.Linq;
 
 namespace BTCPayServer.Plugins.Cashu.Controllers;
 
@@ -63,38 +64,17 @@ public class CashuPaymentController : Controller
     /// <exception cref="Exception"></exception>
     [AllowAnonymous]
     [HttpPost("~/cashu/pay-invoice-pr")]
-    public async Task<ActionResult> PayByPaymentRequest([FromBody] JObject payload)
+    public async Task<ActionResult> PayByPaymentRequest()
     {
         try
         {
-            if (payload["mint"] == null || payload["id"] == null || payload["unit"] == null || payload["proofs"] == null)
+            // FIXME: idk why but i couldn't make it work with [FromBody].
+            var body = await new StreamReader(Request.Body).ReadToEndAsync();
+            var payload = JsonSerializer.Deserialize<PaymentRequestPayload>(body, JsonSerializerOptions.Default);
+            if (payload.PaymentId == null || payload.Mint == null || payload.Unit == null || payload.Proofs == null)
             {
                 throw new ArgumentException("Required fields are missing in the payload.");
             }
-
-            //todo idk why i didn't do it that way, but well i've fucked up
-            //it's a workaround - it should be deserialized by JSONSerializer
-            var parsedPayload = new PaymentRequestPayload
-            {
-                Mint = payload["mint"].Value<string>(),
-                PaymentId = payload["id"].Value<string>(),
-                Memo = payload["memo"]?.Value<string>(),
-                Unit = payload["unit"].Value<string>(),
-                Proofs = payload["proofs"].Value<JArray>().Select(p => new Proof
-                {
-                    Amount = p["amount"]!.Value<ulong>(),
-                    Id = new KeysetId(p["id"]!.Value<string>()),
-                    Secret = new StringSecret(p["secret"]!.Value<string>()),
-                    C = new PubKey(p["C"]!.Value<string>()),
-                }).ToArray()
-            };
-
-            // var parsedPayload = JsonSerializer.Deserialize<PaymentRequestPayload>(paymentPayload);
-            //   "id": str <optional>, will correspond to invoiceId
-            //   "memo": str <optional>, idc about this
-            //   "mint": str, //if trusted mint - save to db, if not - melt 🔥
-            //   "unit": <str_enum>, should always be in sat, since there aren't any standardisation for unit denomination
-            //   "proofs": Array<Proof>  yeah proofs
 
             var token = new CashuToken
             {
@@ -102,15 +82,15 @@ public class CashuPaymentController : Controller
                 [
                     new CashuToken.Token
                     {
-                        Mint = parsedPayload.Mint,
-                        Proofs = parsedPayload.Proofs.ToList()
+                        Mint = payload.Mint,
+                        Proofs = payload.Proofs.ToList()
                     }
                 ],
-                Memo = parsedPayload.Memo,
-                Unit = parsedPayload.Unit
+                Memo = payload.Memo,
+                Unit = payload.Unit
             };
 
-            await _cashuPaymentService.ProcessPaymentAsync(token, parsedPayload.PaymentId);
+            await _cashuPaymentService.ProcessPaymentAsync(token, payload.PaymentId);
             return Ok("Payment sent!");
         }
         catch (CashuPaymentException cex)

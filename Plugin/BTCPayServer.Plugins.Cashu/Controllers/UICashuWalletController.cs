@@ -213,7 +213,7 @@ public class UICashuWalletController : Controller
                 RedirectToAction("CashuWallet", new { storeId = StoreData.Id });
             }
         });
-        return RedirectToAction("ExportedToken", new { tokenId = exportedTokenEntity.Id });
+        return RedirectToAction("ExportedToken", new { tokenId = exportedTokenEntity.Id, storeId = StoreData.Id });
     }
 
     /// <summary>

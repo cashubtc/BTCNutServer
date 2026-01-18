@@ -308,6 +308,7 @@ public class StatefulWallet: IDisposable
             resultProofs = (await _wallet.Swap()
                 .FromInputs(proofsToSwap)
                 .ForOutputs(outputsList)
+                .WithDLEQVerification(true)
                 .ProcessAsync(ct)).ToArray();
             
             await SaveProofs(resultProofs);
