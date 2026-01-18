@@ -1,18 +1,14 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Data;
 using BTCPayServer.Payments;
 using BTCPayServer.Payments.Bitcoin;
-using BTCPayServer.Payments.Lightning;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Controllers;
-using BTCPayServer.Services.Invoices;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
 using NBitcoin;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -21,30 +17,31 @@ using Newtonsoft.Json.Linq;
 namespace BTCPayServer.Plugins.Cashu.PaymentHandlers;
 public class CashuPaymentMethodHandler(
     BTCPayNetworkProvider networkProvider,
-    IServiceProvider serviceProvider,
     LinkGenerator linkGenerator)
     : IPaymentMethodHandler, IHasNetwork
 {
     private readonly BTCPayNetwork _network = networkProvider.GetNetwork<BTCPayNetwork>("BTC");
     public PaymentMethodId PaymentMethodId => CashuPlugin.CashuPmid;
-    
     public BTCPayNetwork Network => _network;
+    public JsonSerializer Serializer { get; } = BlobSerializer.CreateSerializer().Serializer;
+    
     
     public async Task ConfigurePrompt(PaymentMethodContext context)
     {
-        var handlers = serviceProvider.GetRequiredService<PaymentMethodHandlerDictionary>();
         var store = context.Store;
-        
         if (ParsePaymentMethodConfig(store.GetPaymentMethodConfigs()[this.PaymentMethodId]) is not CashuPaymentMethodConfig cashuConfig)
         {
             throw new PaymentMethodUnavailableException($"Cashu payment method not configured");
         }
+        if (cashuConfig.FeeConfing is null)
+        {
+            throw new PaymentMethodUnavailableException("Fee config is missing! Check out cashu payment method settings.");
+        }
         
         var invoice = context.InvoiceEntity;
-        
-        var paymentPath =  $"{invoice.ServerUrl.WithoutEndingSlash()}{linkGenerator.GetPathByAction(nameof(CashuPaymentController.PayByPaymentRequest), "CashuPayment")}";
-        
-        context.Prompt.PaymentMethodFee = (Money.Satoshis(cashuConfig.FeeConfing.CustomerFeeAdvance).ToDecimal(MoneyUnit.BTC));
+        var paymentPath =  
+            $"{invoice.ServerUrl.WithoutEndingSlash()}{linkGenerator.GetPathByAction(nameof(CashuPaymentController.PayByPaymentRequest), "CashuPayment")}";
+        context.Prompt.PaymentMethodFee = Money.Satoshis(cashuConfig.FeeConfing.CustomerFeeAdvance).ToDecimal(MoneyUnit.BTC);
         
         var due = Money.Coins(context.Prompt.Calculate().Due);
         var paymentRequest =
@@ -58,6 +55,12 @@ public class CashuPaymentMethodHandler(
                 throw new PaymentMethodUnavailableException("Melting tokens requires a lightning node to be configured for the store.");
             }
         }
+
+        var details = new CashuPaymentMethodDetails
+        {
+            TrustedMintsUrls = cashuConfig.TrustedMintsUrls,
+        };
+        context.Prompt.Details = JObject.FromObject(details, Serializer);
     }
 
     public Task BeforeFetchingRates(PaymentMethodContext context)
@@ -70,7 +73,6 @@ public class CashuPaymentMethodHandler(
         return Task.CompletedTask;
     }
 
-    public JsonSerializer Serializer { get; } = BlobSerializer.CreateSerializer().Serializer;
     public object ParsePaymentPromptDetails(JToken details)
     {
         return details.ToObject<CashuPaymentMethodDetails>(Serializer);
@@ -102,6 +104,5 @@ public class CashuPaymentData
 
 public class CashuPaymentMethodDetails
 {
-   public CashuPaymentModel PaymentModel { get; set; }
    public List<string> TrustedMintsUrls { get; set; }
 }
