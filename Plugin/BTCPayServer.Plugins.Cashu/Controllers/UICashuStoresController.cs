@@ -99,13 +99,21 @@ public class UICashuStoresController : Controller
             .ToList();
 
         var lightningEnabled = StoreData.IsLightningEnabled("BTC");
+        var currentSettings = 
+            StoreData.GetPaymentMethodConfig<CashuPaymentMethodConfig>(CashuPlugin.CashuPmid, _handlers);
 
-        //todo make sure to enable new models
         //If lighting isn't configured - don't allow user to set meltImmediately.
         var paymentMethodConfig = new CashuPaymentMethodConfig()
         {
             PaymentModel = lightningEnabled ? viewModel.PaymentAcceptanceModel : CashuPaymentModel.TrustedMintsOnly,
             TrustedMintsUrls = parsedTrustedMintsUrls,
+            // 5, 5, and 5 sound like reasonable defaults
+            FeeConfing = currentSettings?.FeeConfing ?? new CashuFeeConfig
+            {
+                CustomerFeeAdvance = 5,
+                MaxLightningFee = 5,
+                MaxKeysetFee = 5,
+            },
         };
 
         blob.SetExcluded(CashuPlugin.CashuPmid, !viewModel.Enabled);

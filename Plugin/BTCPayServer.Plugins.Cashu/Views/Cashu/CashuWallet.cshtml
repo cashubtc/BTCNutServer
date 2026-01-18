@@ -1,8 +1,7 @@
+@using BTCPayServer
 @using BTCPayServer.Abstractions.Extensions
 @using BTCPayServer.Plugins.Cashu
-@using BTCPayServer.Plugins.Cashu.CashuAbstractions
 @using BTCPayServer.Plugins.Cashu.Data.enums
-@using Microsoft.AspNetCore.Mvc.TagHelpers
 @model BTCPayServer.Plugins.Cashu.ViewModels.CashuWalletViewModel
 
 @{
@@ -55,7 +54,7 @@
                             <td class="text-end">@item.Amount</td>
                             <td>@item.Unit</td>
                             <td>
-                                <form method="post" action="ExportMintBalance">
+                                <form method="post" asp-controller="UICashuWallet" asp-action="ExportMintBalance" asp-route-storeId="@Context.GetStoreData().Id">
                                     <input type="hidden" name="mintUrl" value="@item.Mint"/>
                                     <input type="hidden" name="unit" value="@item.Unit"/>
 
@@ -104,7 +103,7 @@
                                     </span>
                                 </td>
                                 <td>
-                                    <a href="@Url.Action("ExportedToken", new { tokenId = item.Id })" class="btn btn-link p-0">Show</a>
+                                    <a href="@Url.Action("ExportedToken", new { tokenId = item.Id, storeId = @Context.GetStoreData().Id })" class="btn btn-link p-0">Show</a>
                                 </td>
                             </tr>
                         }
