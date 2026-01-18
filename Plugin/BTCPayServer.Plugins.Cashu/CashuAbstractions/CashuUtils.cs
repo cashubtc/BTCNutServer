@@ -139,50 +139,7 @@ public static class CashuUtils
 
         return (keepAmounts, sendAmounts);
     }
-
-    /// <summary>
-    /// Creates blank outputs (see nut-08)
-    /// </summary>
-    /// <param name="amount">Amount that blank outputs have to cover</param>
-    /// <param name="keysetId">Active keyset id which will sign outputs</param>
-    /// <param name="keys">Keys for given KeysetId</param>
-    /// <returns>Blank Outputs</returns>
-    public static OutputData CreateBlankOutputs(ulong amount, KeysetId keysetId, Keyset keys, DotNut.NBitcoin.BIP39.Mnemonic? mnemonic = null, uint? counter = null)
-    {
-        // todo migrate to new outputdata format, since this one is retarded
-        var outputs = Utils.CreateBlankOutputs(amount, keysetId, keys, mnemonic, counter);
-        return ConvertOutputData(outputs);
-    }
-
-    /// <summary>
-    /// Creates outputs for swap/melt fee return. Outputs should have valid amounts. 
-    /// </summary>
-    /// <param name="amounts">Amounts for each output (e.g. [1,2,4,8]</param>
-    /// <param name="keysetId">ID of keyset we want to receive the proofs</param>
-    /// <param name="keys">Keyset for given ID</param>
-    /// <param
-    /// <returns></returns>
-    /// <exception cref="ArgumentOutOfRangeException"></exception>
-    public static OutputData CreateOutputs(
-        List<ulong> amounts,
-        KeysetId keysetId,
-        Keyset keys,
-        DotNut.NBitcoin.BIP39.Mnemonic? mnemonic = null,
-        uint? counter = null)
-    {
-        var outputs = DotNut.Abstractions.Utils.CreateOutputs(amounts, keysetId, keys, mnemonic, counter);
-        return ConvertOutputData(outputs);
-    }
-
-    private static OutputData ConvertOutputData(List<DotNut.Abstractions.OutputData> outputDataList)
-    {
-        return new OutputData
-        {
-            BlindedMessages = outputDataList.Select(od => od.BlindedMessage).ToArray(),
-            Secrets = outputDataList.Select(od => od.Secret).ToArray(),
-            BlindingFactors = outputDataList.Select(od => od.BlindingFactor).ToArray()
-        };
-    }
+    
     
     /// <summary>
     /// Create Proofs from BlindSignature array
