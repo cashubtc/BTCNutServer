@@ -16,6 +16,7 @@ using DotNut;
 using DotNut.Abstractions;
 using DotNut.Api;
 using DotNut.NBitcoin.BIP39;
+using Microsoft.EntityFrameworkCore;
 
 namespace BTCPayServer.Plugins.Cashu.Services;
 
@@ -286,12 +287,23 @@ public class RestoreService : IHostedService
         try
         {
             await using var db = _dbContextFactory.CreateContext();
-            db.CashuWalletConfig.Add(new CashuWalletConfig()
+            var config = await db.CashuWalletConfig.FirstOrDefaultAsync(c => c.StoreId == storeId, ct);
+            if (config == null)
             {
-                StoreId = storeId,
-                WalletMnemonic = mnemonic,
-                Verified = true,
-            });
+                config = new CashuWalletConfig
+                {
+                    StoreId = storeId,
+                    WalletMnemonic = mnemonic,
+                    Verified = true,
+                };
+                db.CashuWalletConfig.Add(config);
+            }
+            else
+            {
+                config.WalletMnemonic = mnemonic;
+                config.Verified = true;
+                db.CashuWalletConfig.Update(config);
+            }
             await db.SaveChangesAsync(ct);
             // counter is already set and if anything happens, will be overriden while restore process.
 

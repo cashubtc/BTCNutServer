@@ -33,28 +33,44 @@ public class DbCounter : ICounter
     public async Task<uint> IncrementCounter(KeysetId keysetId, uint bumpBy = 1, CancellationToken ct = default)
     {
         await using var db = _dbContextFactory.CreateContext();
-        var entry = await db.StoreKeysetCounters
-            .FirstOrDefaultAsync(c => c.StoreId == _storeId && c.KeysetId == keysetId, ct);
+        var strategy = db.Database.CreateExecutionStrategy();
 
-        uint newValue;
-        if (entry == null)
+        return await strategy.ExecuteAsync(async () =>
         {
-            newValue = bumpBy;
-            db.StoreKeysetCounters.Add(new StoreKeysetCounter
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            try
             {
-                StoreId = _storeId,
-                KeysetId = keysetId,
-                Counter = newValue
-            });
-        }
-        else
-        {
-            entry.Counter += bumpBy;
-            newValue = entry.Counter;
-        }
+                var entry = await db.StoreKeysetCounters
+                    .FirstOrDefaultAsync(c => c.StoreId == _storeId && c.KeysetId == keysetId, ct);
 
-        await db.SaveChangesAsync(ct);
-        return newValue;
+                uint newValue;
+                if (entry == null)
+                {
+                    newValue = bumpBy;
+                    entry = new StoreKeysetCounter
+                    {
+                        StoreId = _storeId,
+                        KeysetId = keysetId,
+                        Counter = newValue
+                    };
+                    db.StoreKeysetCounters.Add(entry);
+                }
+                else
+                {
+                    entry.Counter += bumpBy;
+                    newValue = entry.Counter;
+                }
+
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                return newValue;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(ct);
+                throw;
+            }
+        });
     }
 
     public async Task SetCounter(KeysetId keysetId, uint counter, CancellationToken ct = default)
