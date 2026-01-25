@@ -8,105 +8,154 @@
     ViewData.SetActivePage(CashuPlugin.PluginNavKey, "Cashu Wallet", "CashuWallet");
 }
 
-<h2 class="mb-2 mb-lg-3">@ViewData["Title"]</h2>
-<div>
+<div class="sticky-header mb-l">
+    <div class="d-flex align-items-center justify-content-between gap-3">
+        <h2 class="mb-0">@ViewData["Title"]</h2>
+    </div>
+</div>
+
 <partial name="_StatusMessage" />
 
-    <div class="d-flex flex-column ">
-    <div class="row">
-        <div class="col-xl-8">
-            <div class="d-flex flex-wrap gap-3 mb-4 w-100">
-                <div class="bg-tile p-3 rounded w-100">
-                    <h5 class="mb-2">Total Balance</h5>
+<div class="row g-4">
+    @* Primary Balance Card *@
+    <div class="col-12 col-lg-5 col-xl-4">
+        <div class="card card-tile h-100 shadow-sm border-0">
+            <div class="card-body p-4 d-flex flex-column justify-content-center">
+                <h5 class="text-muted mb-3">Total Balance</h5>
+                <div class="d-flex flex-column gap-3">
+                    @if (!Model.GroupedBalances.Any())
+                    {
+                        <div class="d-flex align-items-baseline gap-2">
+                            <span class="h1 mb-0 fw-bold">0</span>
+                            <span class="h4 mb-0 text-muted fw-semibold">SATS</span>
+                        </div>
+                    }
                     @foreach (var balance in Model.GroupedBalances)
                     {
                         <div class="d-flex align-items-baseline gap-2">
-                            <span class="h3">@balance.Amount</span>
-                            <span class="text-secondary">@balance.Unit</span>
+                            <span class="h1 mb-0 fw-bold">@balance.Amount</span>
+                            <span class="h4 mb-0 text-muted fw-semibold text-uppercase">@balance.Unit</span>
                         </div>
                     }
-                    
                 </div>
             </div>
+        </div>
+    </div>
 
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead class="table-light">
-                    <tr>
-                        <th>Mint</th>
-                        <th class="text-end">Amount</th>
-                        <th>Unit</th>
-                        <th> </th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    
-                    @foreach (var item in @Model.AvaibleBalances)
-                    {
-                        <tr>
-
-                            <td>
-                                <div class="d-flex align-items-center gap-2">
-                                    <vc:icon symbol="wallet"/>
-                                    <span class="text-truncate">@item.Mint</span>
-                                </div>
-                            </td>
-                            <td class="text-end">@item.Amount</td>
-                            <td>@item.Unit</td>
-                            <td>
-                                <form method="post" asp-controller="UICashuWallet" asp-action="ExportMintBalance" asp-route-storeId="@Context.GetStoreData().Id">
-                                    <input type="hidden" name="mintUrl" value="@item.Mint"/>
-                                    <input type="hidden" name="unit" value="@item.Unit"/>
-
-                                    <button type="submit"
-                                            class="btn btn-link p-0"
-                                            name="action"
-                                            value="@WalletAction.SendToken">
-                                        Export Token
-                                    </button>
-                                </form>
-                            </td>
-                        </tr>
-                    }
-                    
-                    </tbody>
-                </table>
+    @* Mints List Card *@
+    <div class="col-12 col-lg-7 col-xl-8">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-transparent border-0 pt-4 px-4">
+                <h4 class="mb-0">Balances per Mint</h4>
             </div>
-
-            <div class="mt-4 pt-4 border-top">
-                <h4 class="mb-3">Exported Tokens History</h4>
+            <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead class="table-light">
-                        <tr>
-                            <th>Date</th>
-                            <th>Mint</th>
-                            <th class="text-end">Amount</th>
-                            <th>Unit</th>
-                            <th>Status</th>
-                            <th style="width: 80px;"></th>
-                        </tr>
+                    <table class="table table-hover mb-0 border-0">
+                        <thead>
+                            <tr>
+                                <th class="ps-4 border-0" style="width: 40px;"></th>
+                                <th class="border-0">Mint</th>
+                                <th class="text-end border-0">Amount</th>
+                                <th class="pe-4 text-end border-0">Action</th>
+                            </tr>
                         </thead>
                         <tbody>
-                        @foreach (var item in Model.ExportedTokens)
-                        {
+                            @if (!Model.AvaibleBalances.Any())
+                            {
+                                <tr>
+                                    <td colspan="4" class="text-center py-5 text-muted">
+                                        No funds available in any mint.
+                                    </td>
+                                </tr>
+                            }
+                            @foreach (var item in Model.AvaibleBalances)
+                            {
+                                <tr>
+                                    <td class="ps-4 py-3 align-middle">
+                                        <vc:icon symbol="wallet" />
+                                    </td>
+                                    <td class="py-3 align-middle">
+                                        <div class="d-flex flex-column min-w-0">
+                                            <span class="fw-bold text-truncate" style="max-width: 350px;" title="@item.Mint">@item.Mint</span>
+                                            <span class="text-muted small">@item.Unit</span>
+                                        </div>
+                                    </td>
+                                    <td class="text-end py-3 align-middle">
+                                        <span class="h5 mb-0 fw-bold">@item.Amount</span>
+                                    </td>
+                                    <td class="pe-4 py-3 text-end align-middle">
+                                        <form method="post" asp-controller="UICashuWallet" asp-action="ExportMintBalance" asp-route-storeId="@Context.GetStoreData().Id">
+                                            <input type="hidden" name="mintUrl" value="@item.Mint" />
+                                            <input type="hidden" name="unit" value="@item.Unit" />
+                                            <button type="submit" class="btn btn-primary btn-sm px-3" name="action" value="@WalletAction.SendToken">
+                                                Export
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* History Card *@
+    <div class="col-12">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-transparent border-0 pt-4 px-4">
+                <h4 class="mb-0">Token Export History</h4>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
                             <tr>
-                                <td>@item.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
-                                <td>
-                                    <span class="text-truncate d-inline-block" style="max-width: 200px;">@item.Mint</span>
-                                </td>
-                                <td class="text-end">@item.Amount</td>
-                                <td>@item.Unit</td>
-                                <td>
-                                    <span class="badge @(item.IsUsed ? "bg-secondary" : "bg-warning")">
-                                        @(item.IsUsed ? "Spent" : "Pending")
-                                    </span>
-                                </td>
-                                <td>
-                                    <a href="@Url.Action("ExportedToken", new { tokenId = item.Id, storeId = @Context.GetStoreData().Id })" class="btn btn-link p-0">Show</a>
-                                </td>
+                                <th class="ps-4">Date</th>
+                                <th>Mint</th>
+                                <th class="text-end">Amount</th>
+                                <th class="text-center">Status</th>
+                                <th class="pe-4 text-end">Action</th>
                             </tr>
-                        }
+                        </thead>
+                        <tbody>
+                            @if (!Model.ExportedTokens.Any())
+                            {
+                                <tr>
+                                    <td colspan="5" class="text-center py-5 text-muted">
+                                        Your exported tokens will appear here.
+                                    </td>
+                                </tr>
+                            }
+                            @foreach (var item in Model.ExportedTokens)
+                            {
+                                <tr>
+                                    <td class="ps-4 py-3 align-middle">@item.CreatedAt.ToBrowserDate()</td>
+                                    <td class="py-3 align-middle">
+                                        <code class="text-truncate d-inline-block" style="max-width: 200px;" title="@item.Mint">@item.Mint</code>
+                                    </td>
+                                    <td class="text-end py-3 align-middle">
+                                        <span class="fw-bold">@item.Amount</span>
+                                        <span class="text-muted small text-uppercase">@item.Unit</span>
+                                    </td>
+                                    <td class="text-center py-3 align-middle">
+                                        @if (item.IsUsed)
+                                        {
+                                            <span class="badge bg-secondary">Spent</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-warning">Pending</span>
+                                        }
+                                    </td>
+                                    <td class="pe-4 py-3 text-end align-middle">
+                                        <a href="@Url.Action("ExportedToken", new { tokenId = item.Id, storeId = @Context.GetStoreData().Id })" class="btn btn-outline-secondary btn-sm">
+                                            Details
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
                         </tbody>
                     </table>
                 </div>
@@ -114,26 +163,62 @@
         </div>
     </div>
 </div>
-</div>
 
 <style>
-    .table td, .table th {
-        vertical-align: middle;
+    :root {
+        --btcpay-cashu-warning-bg: rgba(255, 193, 7, 0.1);
     }
-
+    
+    .card-tile {
+        background: var(--btcpay-bg-tile);
+    }
+    
+    .table thead th {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--btcpay-body-text-muted);
+        border-bottom: 1px solid var(--btcpay-border-color) !important;
+        background: transparent;
+    }
+    
     .table td {
-        max-width: 300px;
+        border-bottom: 1px solid var(--btcpay-border-color);
+        background: transparent;
+    }
+    
+    .table tr:last-child td {
+        border-bottom: none;
+    }
+    
+    .card {
+        border-radius: 0.75rem;
         overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        background: var(--btcpay-bg-tile);
     }
-
-    .table-responsive {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
+    
+    .table-hover tbody tr:hover td {
+        background-color: var(--btcpay-body-bg);
     }
-    .sticky-header button {
-        margin-top: 0.5rem;
-        align-self: flex-start;
+    
+    code {
+        color: var(--btcpay-primary);
+        background: rgba(var(--btcpay-primary-rgb), 0.1);
+        padding: 0.2rem 0.5rem;
+        border-radius: 0.35rem;
+        font-size: 0.85rem;
+        border: 1px solid rgba(var(--btcpay-primary-rgb), 0.1);
+    }
+    
+    .badge {
+        font-weight: 500;
+        padding: 0.4em 0.8em;
+    }
+    
+    .bg-warning {
+        background-color: var(--btcpay-cashu-warning-bg) !important;
+        color: var(--btcpay-warning) !important;
+        border: 1px solid var(--btcpay-warning);
     }
 </style>
