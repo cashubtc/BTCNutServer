@@ -11,6 +11,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Data;
+using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
 using DotNut;
 using DotNut.Abstractions;
@@ -272,7 +273,7 @@ public class RestoreService : IHostedService
                 db.Mints.Add(new Mint(mintUrl));
             }
             // add proofs
-            db.Proofs.AddRange(StoredProof.FromBatch(proofs, storeId));
+            db.Proofs.AddRange(StoredProof.FromBatch(proofs, storeId, ProofState.Available));
             
             await db.SaveChangesAsync(cancellationToken);
         }

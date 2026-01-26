@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BTCPayServer.Plugins.Cashu.Data.enums;
 using DotNut;
 
 namespace BTCPayServer.Plugins.Cashu.Data.Models;
@@ -9,10 +10,15 @@ public class StoredProof : Proof
 {
     public Guid ProofId { get; set; }
     public string StoreId { get; set; }
-    //entity framework will cry without empty constructor
+    public ProofState Status { get; set; } = ProofState.Available;
+
+    // FK for exported tokens - null means proof is in wallet, set means exported
+    public Guid? ExportedTokenId { get; set; }
+
+    // EF requires empty constructor
     private StoredProof() {} 
 
-    public StoredProof(Proof proof, string storeId) 
+    public StoredProof(Proof proof, string storeId, ProofState status) 
     {
         this.Id = proof.Id;
         this.Amount = proof.Amount;
@@ -21,6 +27,7 @@ public class StoredProof : Proof
         this.DLEQ = proof.DLEQ;
         this.Witness = proof.Witness;
         this.StoreId = storeId;
+        this.Status = status;
     }
     
     public Proof ToDotNutProof()
@@ -35,10 +42,9 @@ public class StoredProof : Proof
             Witness = this.Witness
         };
     }
-    public static IEnumerable<StoredProof> FromBatch(IEnumerable<Proof> proofs, string storeId)
+    public static IEnumerable<StoredProof> FromBatch(IEnumerable<Proof> proofs, string storeId, ProofState status)
     {
-        return proofs.Select(p=>new StoredProof(p, storeId));
+        return proofs.Select(p=>new StoredProof(p, storeId, status));
     }
-    
     
 }

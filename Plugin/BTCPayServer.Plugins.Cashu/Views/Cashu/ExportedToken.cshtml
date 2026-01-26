@@ -1,68 +1,80 @@
+@using BTCPayServer
 @using BTCPayServer.Abstractions.Extensions
 @using BTCPayServer.Abstractions.TagHelpers
 @using BTCPayServer.Plugins.Cashu
 @using Microsoft.AspNetCore.Mvc.TagHelpers
 @model BTCPayServer.Plugins.Cashu.ViewModels.ExportedTokenViewModel
 @{
-    ViewData.SetActivePage(CashuPlugin.PluginNavKey, "Exporting token...", "Configuration");
+    ViewData.SetActivePage(CashuPlugin.PluginNavKey, "Exported Token", "Configuration");
 }
 
-<div class="container py-4">
-    <div class="row justify-content-center">
-        <div class="col-lg-7 col-md-9">
-            <div class="card shadow-sm border-0">
-                <div class="card-body">
-                    <h2 class="mb-4 text-center">Exported Token</h2>
-                    <div class="d-flex flex-column align-items-center mb-4 qrcode-container">
-                        <canvas id="qrcode" style="max-width: 240px; width: 100%; height: auto;"></canvas>
-                        <div class="invisible" id="token-dummy-div" data-token="@Model.Token"></div>
+<div class="row justify-content-center">
+    <div class="col-xxl-6 col-xl-7 col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h3 class="card-title mb-0">Exported Cashu Token</h3>
+                <a href="@Url.Action("CashuWallet", "UICashuWallet", new { storeId = @Context.GetStoreData().Id })" class="btn-close" aria-label="Close"></a>
+            </div>
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <div class="d-inline-block p-2 bg-white rounded shadow-sm border mb-3">
+                        <canvas id="qrcode" width="220" height="220" style="max-width: 100%; height: auto;"></canvas>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold" for="tokenValue">Token</label>
-                        <div class="input-group">
-                            <input id="tokenValue" class="form-control font-monospace" value="@Model.Token" readonly autocomplete="off" spellcheck="false" style="background: #f8f9fa;">
-                            <button type="button" class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('tokenValue').value)">
-                                Copy
-                            </button>
+                    <div class="invisible" id="token-dummy-div" data-token="@Model.Token"></div>
+                    <p class="text-muted small">Scan with your Cashu wallet</p>
+                </div>
+
+                <div class="p-4 rounded-3 mb-4" style="background: var(--btcpay-body-bg); border: 1px solid var(--btcpay-border-color);">
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <label class="text-muted small text-uppercase fw-bold mb-1 d-block">Amount</label>
+                            <span class="h3 mb-0 fw-bold">@Model.FormatedAmount</span>
+                        </div>
+                        <div class="col-sm-6 text-sm-end">
+                            <label class="text-muted small text-uppercase fw-bold mb-1 d-block">Mint</label>
+                            <code class="text-truncate d-inline-block small" style="max-width: 220px;" title="@Model.MintAddress">@Model.MintAddress</code>
                         </div>
                     </div>
-                    <ul class="list-group list-group-flush mb-3">
-                        <li class="list-group-item px-0 py-2"><strong>Amount:</strong> <span class="font-monospace">@Model.FormatedAmount</span></li>
-                        <li class="list-group-item px-0 py-2"><strong>Mint Address:</strong> <span class="font-monospace">@Model.MintAddress</span></li>
-                    </ul>
-                    <div class="alert alert-info small mb-0">
-                        <strong>Keep your token safe!</strong> Anyone with this token can spend it.
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-semibold text-muted small text-uppercase mb-2" for="tokenValue">Token String</label>
+                    <div class="input-group align-items-stretch">
+                        <textarea id="tokenValue" class="form-control font-monospace token-field" rows="5" readonly style="font-size: 0.85rem; background-color: var(--btcpay-bg-tile); border-color: var(--btcpay-border-color); resize: none;">@Model.Token</textarea>
+                        <button type="button" class="btn btn-outline-primary token-copy" data-clipboard-target="#tokenValue">Copy</button>
                     </div>
                 </div>
+
+                <div class="alert alert-warning p-3 mb-4 border-0 shadow-none d-flex gap-3 align-items-start rounded-3">
+                    <vc:icon symbol="warning" />
+                    <div class="small">
+                        <strong>Security Warning:</strong> Anyone with this token can spend it. Keep it secure and do not share it over unencrypted channels.
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-0 text-center pb-4">
+                <a href="@Url.Action("CashuWallet", "UICashuWallet", new { storeId = @Context.GetStoreData().Id })" class="btn btn-secondary px-4">
+                    Back to Wallet
+                </a>
             </div>
         </div>
     </div>
 </div>
+
 <style>
-    .card {
-        border-radius: 1rem;
-    }
-
-    .input-group .form-control {
-        border-right: 0;
-    }
-
-    .input-group .btn {
-        border-left: 0;
-    }
-
     .font-monospace {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-family: var(--btcpay-font-family-monospace) !important;
+        word-break: break-all;
     }
-
-    @@media (max-width: 576px) {
-    .card {
-        border-radius: .5rem;
+    .token-field {
+        min-height: 140px;
     }
-    .input-group .form-control {
-        font-size: 0.95rem;
+    .token-copy {
+        min-width: 96px;
     }
+    .alert-warning {
+        background-color: rgba(255, 193, 7, 0.1) !important;
+        color: var(--btcpay-warning) !important;
     }
-
 </style>
 <script type="module" src="~/Resources/js/bundle.js" asp-append-version="true" />

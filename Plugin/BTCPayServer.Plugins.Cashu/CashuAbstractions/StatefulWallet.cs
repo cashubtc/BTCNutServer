@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using BTCPayServer.Lightning;
 using BTCPayServer.Plugins.Cashu.Data;
+using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
 using BTCPayServer.Plugins.Cashu.Errors;
 using DotNut;
@@ -15,7 +16,6 @@ using DotNut.Abstractions.Handlers;
 using Microsoft.EntityFrameworkCore;
 
 using DotNutOutputData = DotNut.Abstractions.OutputData;
-using CashuOutputData = BTCPayServer.Plugins.Cashu.CashuAbstractions.CashuUtils.OutputData;
 
 namespace BTCPayServer.Plugins.Cashu.CashuAbstractions;
 
@@ -186,7 +186,7 @@ public class StatefulWallet: IDisposable
     /// <returns>Change proofs</returns>
     public async Task<MeltResult> Melt(PostMeltQuoteBolt11Response meltQuote, List<Proof> proofsToMelt, CancellationToken cancellationToken = default)
     {
-        CashuOutputData? blankOutputsBatch = null;
+        List<DotNutOutputData> blankOutputs = new();
         Proof[]? changeProofs = null;
         try
         {
@@ -212,15 +212,13 @@ public class StatefulWallet: IDisposable
             }
             
             // create blank outputs again and use them
-            var blankOutputsList = await _wallet.CreateOutputs(
+            blankOutputs = await _wallet.CreateOutputs(
                 Enumerable.Repeat(1UL, Utils.CalculateNumberOfBlankOutputs(feeReserve)).ToList(),
                 activeKeysetId,
                 cancellationToken
             );
             
-            blankOutputsBatch = ConvertOutputData(blankOutputsList);
-
-            var handler = new MeltHandlerBolt11(_wallet, meltQuote, blankOutputsList);
+            var handler = new MeltHandlerBolt11(_wallet, meltQuote, blankOutputs);
             
             changeProofs = (await handler.Melt(proofsToMelt, cancellationToken)).ToArray();
             
@@ -236,7 +234,7 @@ public class StatefulWallet: IDisposable
 
             return new MeltResult()
             {
-                BlankOutputs = blankOutputsBatch,
+                BlankOutputs = blankOutputs,
                 ChangeProofs = changeProofs,
                 Quote = meltQuote
             };
@@ -245,7 +243,7 @@ public class StatefulWallet: IDisposable
         {
             return new MeltResult()
             {
-                BlankOutputs = blankOutputsBatch!, 
+                BlankOutputs = blankOutputs, 
                 ChangeProofs = changeProofs, // return proofs if we have them (db failure scenario)
                 Error = e,
                 Quote = meltQuote
@@ -299,15 +297,14 @@ public class StatefulWallet: IDisposable
         await EnsureInitialized();
         keysetId ??= (await GetActiveKeyset()).Id;
         
-        var outputsList = await _wallet.CreateOutputs(amounts, keysetId, ct);
-        var outputsBatch = ConvertOutputData(outputsList);
+        var outputs = await _wallet.CreateOutputs(amounts, keysetId, ct);
         
         Proof[]? resultProofs = null;
         try
         {
             resultProofs = (await _wallet.Swap()
                 .FromInputs(proofsToSwap)
-                .ForOutputs(outputsList)
+                .ForOutputs(outputs)
                 .WithDLEQVerification(true)
                 .ProcessAsync(ct)).ToArray();
             
@@ -315,7 +312,7 @@ public class StatefulWallet: IDisposable
                 
             return new SwapResult
             {
-                ProvidedOutputs = outputsBatch,
+                ProvidedOutputs = outputs,
                 ResultProofs = resultProofs,
             };
         }
@@ -323,7 +320,7 @@ public class StatefulWallet: IDisposable
         {
             return new SwapResult
             {
-                ProvidedOutputs = outputsBatch,
+                ProvidedOutputs = outputs,
                 ResultProofs = resultProofs, // return proofs if network succeeded but something else failed
                 Error = e,
             };
@@ -464,7 +461,7 @@ public class StatefulWallet: IDisposable
         await using var db = _dbContextFactory.CreateContext();
         var mint = await GetOrCreateMintInDb(db);
         
-        var dbProofs = StoredProof.FromBatch(proofs, _storeId);
+        var dbProofs = StoredProof.FromBatch(proofs, _storeId, ProofState.Available);
         db.Proofs.AddRange(dbProofs);
         
         await db.SaveChangesAsync();
@@ -523,15 +520,6 @@ public class StatefulWallet: IDisposable
 
     }
     
-    private static CashuOutputData ConvertOutputData(List<DotNutOutputData> outputDataList)
-    {
-        return new CashuOutputData
-        {
-            BlindedMessages = outputDataList.Select(od => od.BlindedMessage).ToArray(),
-            Secrets = outputDataList.Select(od => od.Secret).ToArray(),
-            BlindingFactors = outputDataList.Select(od => od.BlindingFactor).ToArray()
-        };
-    }
 
     public void Dispose()
     {

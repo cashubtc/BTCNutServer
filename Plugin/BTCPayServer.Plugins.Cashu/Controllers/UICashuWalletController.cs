@@ -9,6 +9,7 @@ using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.PaymentHandlers;
 using BTCPayServer.Plugins.Cashu.ViewModels;
 using BTCPayServer.Plugins.Cashu.CashuAbstractions;
+using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Services.Invoices;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -30,14 +31,12 @@ public class UICashuWalletController : Controller
     public UICashuWalletController(
         InvoiceRepository invoiceRepository,
         PaymentMethodHandlerDictionary handlers,
-        CashuStatusProvider cashuStatusProvider,
         CashuPaymentService cashuPaymentService,
         CashuDbContextFactory cashuDbContextFactory,
         ILogger<UICashuWalletController> logger)
     {
         _invoiceRepository = invoiceRepository;
         _handlers = handlers;
-        _cashuStatusProvider = cashuStatusProvider;
         _cashuPaymentService = cashuPaymentService;
         _cashuDbContextFactory = cashuDbContextFactory;
         _logger = logger;
@@ -47,7 +46,6 @@ public class UICashuWalletController : Controller
 
     private readonly InvoiceRepository _invoiceRepository;
     private readonly PaymentMethodHandlerDictionary _handlers;
-    private readonly CashuStatusProvider _cashuStatusProvider;
     private readonly CashuPaymentService _cashuPaymentService;
     private readonly CashuDbContextFactory _cashuDbContextFactory;
     private readonly ILogger<UICashuWalletController> _logger;
@@ -81,9 +79,7 @@ public class UICashuWalletController : Controller
 
                var localProofs = await db.Proofs
                    .Where(p => keysets.Keysets.Select(k => k.Id).Contains(p.Id) &&
-                               p.StoreId == StoreData.Id &&
-                                 !db.FailedTransactions.Any(ft => ft.UsedProofs.Contains(p)
-                                     )).ToListAsync();
+                               p.StoreId == StoreData.Id && p.Status == ProofState.Available).ToListAsync();
 
                 foreach (var proof in localProofs)
                 {
@@ -114,7 +110,12 @@ public class UICashuWalletController : Controller
             .Select(x => (x.Mint, x.Unit, x.Amount))
             .ToList();
 
-        var exportedTokens = db.ExportedTokens.Where(et=>et.StoreId == StoreData.Id).ToList();
+        var exportedTokens = db
+            .ExportedTokens
+            .Where(et=>et.StoreId == StoreData.Id)
+            .OrderByDescending(et => et.CreatedAt)
+            .ToList();
+        
         if (unavailableMints.Any())
         {
             TempData[WellKnownTempData.ErrorMessage] = $"Couldn't load {unavailableMints.Count} mints: {String.Join(", ", unavailableMints)}";
@@ -156,12 +157,11 @@ public class UICashuWalletController : Controller
             return RedirectToAction("CashuWallet", new { storeId = StoreData.Id});
         }
 
-        var selectedProofs = db.Proofs.Where(p=>
+        var selectedProofs = await db.Proofs.Where(p=>
             p.StoreId == StoreData.Id
             && keysets.Select(k => k.Id).Contains(p.Id)
-            //ensure that proof is free and spendable (yeah!)
-            && !db.FailedTransactions.Any(ft => ft.UsedProofs.Contains(p))
-            ).ToList();
+            && p.Status == ProofState.Available)
+            .ToListAsync();
 
         var createdToken = new CashuToken()
         {
@@ -180,10 +180,11 @@ public class UICashuWalletController : Controller
         var tokenAmount = selectedProofs.Select(p => p.Amount).Sum();
         var serializedToken = createdToken.Encode();
 
-        var proofsToRemove = await db.Proofs
-            .Where(p => p.StoreId == StoreData.Id &&
-                        keysets.Select(k => k.Id).Contains(p.Id))
-            .ToListAsync();
+        // mark proofs as exported and link to ExportedToken
+        foreach (var proof in selectedProofs)
+        {
+            proof.Status = ProofState.Exported;
+        }
 
         var exportedTokenEntity = new ExportedToken
         {
@@ -193,15 +194,17 @@ public class UICashuWalletController : Controller
             Mint = mintUrl,
             StoreId = StoreData.Id,
             IsUsed = false,
+            Proofs = selectedProofs, 
         };
-        var strategy = db.Database.CreateExecutionStrategy();
 
+                
+        IActionResult result = RedirectToAction("ExportedToken", new { tokenId = exportedTokenEntity.Id, storeId = StoreData.Id });
+        var strategy = db.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
             await using var transaction = await db.Database.BeginTransactionAsync();
             try
             {
-                db.Proofs.RemoveRange(proofsToRemove);
                 db.ExportedTokens.Add(exportedTokenEntity);
                 await db.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -209,11 +212,11 @@ public class UICashuWalletController : Controller
             catch
             {
                 await transaction.RollbackAsync();
-                ViewData[WellKnownTempData.ErrorMessage] = "Couldn't export";
-                RedirectToAction("CashuWallet", new { storeId = StoreData.Id });
+                TempData[WellKnownTempData.ErrorMessage] = "Couldn't export token";
+                result = RedirectToAction(nameof(CashuWallet), new {storeId = StoreData.Id});
             }
         });
-        return RedirectToAction("ExportedToken", new { tokenId = exportedTokenEntity.Id, storeId = StoreData.Id });
+        return result;
     }
 
     /// <summary>
@@ -224,36 +227,53 @@ public class UICashuWalletController : Controller
     [HttpGet("{storeId}/cashu/token/{tokenId}")]
     public async Task<IActionResult> ExportedToken(string storeId, Guid tokenId)
     {
-
         await using var db = _cashuDbContextFactory.CreateContext();
 
-        var exportedToken = db.ExportedTokens.SingleOrDefault(e => e.Id == tokenId);
+        var exportedToken = await db.ExportedTokens
+            .Include(et => et.Proofs)
+            .SingleOrDefaultAsync(e => e.Id == tokenId);
+
         if (exportedToken == null)
         {
             return BadRequest("Can't find token with provided GUID");
         }
 
-        //todo move this logic into main wallet screen. maybe do a "state check" button? 
-        if (!exportedToken.IsUsed)
+        // in pre-release version there were no Proofs in exportedToken, and token had to be deserialized manually every time
+        // this propably can be deleted in future.
+        if (exportedToken.Proofs == null || exportedToken.Proofs.Count == 0)
+        {
+            var deserialized = CashuTokenHelper.Decode(exportedToken.SerializedToken, out _);
+            var newProofs = StoredProof.FromBatch(
+                deserialized.Tokens.SelectMany(t => t.Proofs).ToList(), 
+                storeId, 
+                ProofState.Exported
+            ).ToList();
+            exportedToken.Proofs = new();
+            exportedToken.Proofs.AddRange(newProofs);
+            await db.SaveChangesAsync();
+        }
+    
+        // check state if not already marked as used
+        if (!exportedToken.IsUsed && exportedToken.Proofs.Count > 0)
         {
             try
             {
                 var wallet = new StatefulWallet(exportedToken.Mint, exportedToken.Unit);
-                var proofs = CashuTokenHelper.Decode(exportedToken.SerializedToken, out _)
-                    .Tokens.SelectMany(t => t.Proofs)
-                    .Distinct()
-                    .ToList();
-                var state = await wallet.CheckTokenState(proofs);
+                var state = await wallet.CheckTokenState(exportedToken.Proofs);
+
                 if (state == StateResponseItem.TokenState.SPENT)
                 {
                     exportedToken.IsUsed = true;
-                    db.ExportedTokens.Update(exportedToken);
+                    foreach (var proof in exportedToken.Proofs)
+                    {
+                        proof.Status = ProofState.Spent;
+                    }
                     await db.SaveChangesAsync();
                 }
             }
             catch (Exception)
             {
-                //honestly, there's nothing to do. maybe it'll work next time
+                // mint unreachable - will check next time
             }
         }
 
@@ -277,27 +297,18 @@ public class UICashuWalletController : Controller
     {
         await using var db = _cashuDbContextFactory.CreateContext();
         //fetch recently failed transactions
-        var failedTransactions = db.FailedTransactions
+        var failedTransactions = await db.FailedTransactions
             .Where(ft => ft.StoreId == StoreData.Id)
-            .Include(ft=>ft.UsedProofs)
-            .ToList();
+            .ToListAsync();
 
         return View("Views/Cashu/FailedTransactions.cshtml", failedTransactions);
     }
-
-
-    /// <summary>
-    /// Api route for checking failed transaction state.
-    /// </summary>
-    /// <param name="storeId">Store ID</param>
-    /// <param name="failedTransactionId"></param>
-    /// <returns></returns>
+    
     [HttpPost("{storeId}/cashu/failed-transactions/{failedTransactionId}")]
     public async Task<IActionResult> PostFailedTransaction(string storeId, Guid failedTransactionId)
     {
         await using var db = _cashuDbContextFactory.CreateContext();
         var failedTransaction = db.FailedTransactions
-            .Include(failedTransaction => failedTransaction.UsedProofs)
             .SingleOrDefault(t => t.Id == failedTransactionId);
 
         if (failedTransaction == null)
@@ -360,7 +371,7 @@ public class UICashuWalletController : Controller
             return RedirectToAction("FailedTransactions", new { storeId = StoreData.Id});
         }
 
-        await _cashuPaymentService.AddProofsToDb(pollResult.ResultProofs, StoreData.Id, failedTransaction.MintUrl);
+        await _cashuPaymentService.AddProofsToDb(pollResult.ResultProofs, StoreData.Id, failedTransaction.MintUrl, ProofState.Available);
         decimal singleUnitPrice;
         try
         {
@@ -374,8 +385,24 @@ public class UICashuWalletController : Controller
             return RedirectToAction("FailedTransactions", new { storeId = StoreData.Id});
         }
 
-        var summedProofs = failedTransaction.UsedProofs.Select(p=>p.Amount).Sum();
-        await _cashuPaymentService.RegisterCashuPayment(invoice, cashuHandler, Money.Satoshis(summedProofs*singleUnitPrice));
+        // calculate payment amount
+        ulong inputAmount = failedTransaction.InputAmount;
+        
+        // old FailedTransactions have InputAmount = 0 and InputProofsJson = NULL
+        // this happened because the migration added these columns with default values
+        // the actual input proofs were deleted from the Proofs table (they were customer's proofs, not wallet proofs)
+        // for recovery, we use the invoice amount as approximation
+        if (inputAmount == 0)
+        {
+            // use invoice amount divided by single unit price as approximation
+            var invoiceAmountSats = invoice.Price;
+            inputAmount = (ulong)(invoiceAmountSats / singleUnitPrice);
+            
+            // this is best-effort recovery for old failed transactions
+            // the actual input amount is lost, but invoice amount should be close enough
+        }
+
+        await _cashuPaymentService.RegisterCashuPayment(invoice, cashuHandler, Money.Satoshis(inputAmount * singleUnitPrice));
         db.FailedTransactions.Remove(failedTransaction);
         await db.SaveChangesAsync();
         TempData[WellKnownTempData.SuccessMessage] = $"Transaction retrieved successfully. Marked as paid.";
@@ -385,7 +412,7 @@ public class UICashuWalletController : Controller
     [HttpGet("~/cashu/mint-info")]
     public async Task<IActionResult> GetMintInfo(string mintUrl)
     {
-        if (!mintUrl.StartsWith("http") && !mintUrl.StartsWith("https") 
+        if (!mintUrl.StartsWith("http") && !mintUrl.StartsWith("https")
             || !Uri.TryCreate(mintUrl, UriKind.Absolute, out var uri))
         {
             return BadRequest("Invalid mint url provided!");
@@ -397,7 +424,7 @@ public class UICashuWalletController : Controller
                 .Create()
                 .WithMint(uri)
                 .GetInfo();
-            
+
             var dto = new
             {
                 name = info.Name,
@@ -405,16 +432,15 @@ public class UICashuWalletController : Controller
                 description_long = info.DescriptionLong,
                 contact = new
                 {
-                    email = info.Contact?.FirstOrDefault(i=>i?.Method == "email", null)?.Info,
-                    twitter = info.Contact?.FirstOrDefault(i=>i?.Method == "twitter", null)?.Info,
-                    nostr = info.Contact?.FirstOrDefault(i=>i?.Method == "nostr", null)?.Info,
+                    email = info.Contact?.FirstOrDefault(i => i?.Method == "email", null)?.Info,
+                    twitter = info.Contact?.FirstOrDefault(i => i?.Method == "twitter", null)?.Info,
+                    nostr = info.Contact?.FirstOrDefault(i => i?.Method == "nostr", null)?.Info,
                 },
                 nuts = info.Nuts?.Keys,
-                currency = info.IsSupportedMintMelt(4).Methods.Select(m=>m.Unit).Distinct(),
+                currency = info.IsSupportedMintMelt(4).Methods.Select(m => m.Unit).Distinct(),
                 version = info.Version,
                 url = mintUrl
             };
-
             
             return Ok(dto);
         }

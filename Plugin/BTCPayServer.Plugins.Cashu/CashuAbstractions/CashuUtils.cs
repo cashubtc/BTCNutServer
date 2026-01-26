@@ -9,6 +9,7 @@ using BTCPayServer.Plugins.Cashu.PaymentHandlers;
 using DotNut;
 using DotNut.Api;
 using DotNut.ApiModels;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NBitcoin;
 using Utils = DotNut.Abstractions.Utils;
 
@@ -330,6 +331,40 @@ public static class CashuUtils
         public BlindedMessage[] BlindedMessages { get; set; }
         public DotNut.ISecret[] Secrets { get; set; }
         public PrivKey[] BlindingFactors { get; set; }
+
+        public static implicit operator List<DotNut.Abstractions.OutputData>(OutputData outputData)
+        {
+            return outputData.BlindedMessages
+                .Select((t, i) => 
+                    new DotNut.Abstractions.OutputData
+                    {
+                        BlindedMessage = t, 
+                        BlindingFactor = outputData.BlindingFactors[i], 
+                        Secret = outputData.Secrets[i]
+                    }).ToList();
+            
+        }
+
+        public static implicit operator OutputData(List<DotNut.Abstractions.OutputData> outputData)
+        {
+            var secrets = new List<DotNut.ISecret>();
+            var bms = new List<BlindedMessage>();
+            var bfs = new List<PrivKey>();
+
+            foreach (var od in outputData)
+            {
+                secrets.Add(od.Secret);
+                bms.Add(od.BlindedMessage);
+                bfs.Add(od.BlindingFactor);
+            }
+
+            return new OutputData()
+            {
+                BlindedMessages = bms.ToArray(),
+                BlindingFactors = bfs.ToArray(),
+                Secrets = secrets.ToArray()
+            };
+        }
     }
 
     public static bool TryDecodeToken(string token, out CashuToken? cashuToken)

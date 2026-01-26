@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -13,9 +14,10 @@ public record ExportedToken
     public ulong Amount { get; set; }
     public string Unit { get; set; }
     public string Mint { get; set; }
+
+    public List<StoredProof> Proofs { get; set; } = [];
+
     public bool IsUsed { get; set; }
-    
     public DateTimeOffset CreatedAt { get; set; } = DateTime.UtcNow;
     public string StoreId { get; set; }
-    
 };

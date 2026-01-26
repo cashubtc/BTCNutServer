@@ -37,6 +37,8 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
             entity.HasIndex(sk => sk.Id);
             entity.HasIndex(sk => sk.StoreId);
             entity.HasIndex(sk => sk.Amount);
+            entity.HasIndex(sk => sk.Status);
+            entity.HasIndex(sk => sk.ExportedTokenId);
 
             entity.Property(p => p.C)
                 .HasConversion(
@@ -133,6 +135,14 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
                             c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                             c => c.ToArray()));
             });
+        });
+
+        modelBuilder.Entity<ExportedToken>(entity =>
+        {
+            entity.HasMany(et => et.Proofs)
+                .WithOne()
+                .HasForeignKey(sp => sp.ExportedTokenId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<CashuWalletConfig>(entity =>
