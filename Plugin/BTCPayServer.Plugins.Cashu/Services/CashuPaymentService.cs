@@ -112,7 +112,8 @@ public class CashuPaymentService
         }
         catch (HttpRequestException)
         {
-            _logs.PayServer.LogError("(Cashu) Couldn't connect to: {mint}",token.Tokens.First().Mint );
+            var mintUrl = token.Tokens.FirstOrDefault()?.Mint ?? "unknown mint";
+            _logs.PayServer.LogError("(Cashu) Couldn't connect to: {mint}", mintUrl);
             throw new CashuPaymentException("Mint unreachable.");
         }
         catch (CashuProtocolException ex)
@@ -669,14 +670,22 @@ public class CashuPaymentService
                 if (status == CashuPaymentState.Success)
                 {   
                     //Change won't be always present
-                    if (meltQuoteState.Change == null)
+                    if (meltQuoteState.Change == null || meltQuoteState.Change.Length == 0)
                     {
                         return new PollResult()
                         {
                             State = CashuPaymentState.Success
                         };
                     }
-                    var keys = await wallet.GetKeys(meltQuoteState.Change.First().Id);
+                    var firstChange = meltQuoteState.Change.FirstOrDefault();
+                    if (firstChange == null)
+                    {
+                        return new PollResult()
+                        {
+                            State = CashuPaymentState.Success
+                        };
+                    }
+                    var keys = await wallet.GetKeys(firstChange.Id);
                     var proofs = CashuUtils.CreateProofs(meltQuoteState.Change, ftx.OutputData.BlindingFactors,
                         ftx.OutputData.Secrets, keys);
                     return new PollResult()
@@ -742,7 +751,15 @@ public class CashuPaymentService
             var response = await wallet.RestoreProofsFromInputs(ftx.OutputData.BlindedMessages.ToArray(), cts);
             if (response.Signatures.Length == ftx.OutputData.BlindedMessages.Length)
             {
-                var keysetId = response.Signatures.First().Id;
+                var firstSignature = response.Signatures.FirstOrDefault();
+                if (firstSignature == null)
+                {
+                    return new PollResult()
+                    {
+                        State = CashuPaymentState.Failed,
+                    };
+                }
+                var keysetId = firstSignature.Id;
                 var keys = await wallet.GetKeys(keysetId);
                 var proofs = CashuUtils.CreateProofs(response.Signatures, ftx.OutputData.BlindingFactors, ftx.OutputData.Secrets, keys);
                 return new PollResult()

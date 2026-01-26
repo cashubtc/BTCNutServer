@@ -74,7 +74,7 @@ public class UICashuWalletController : Controller
         {
             try
             {
-                var cashuHttpClient = CashuUtils.GetCashuHttpClient(mint);
+                using var cashuHttpClient = CashuUtils.GetCashuHttpClient(mint);
                 var keysets = await cashuHttpClient.GetKeysets();
 
                var localProofs = await db.Proofs

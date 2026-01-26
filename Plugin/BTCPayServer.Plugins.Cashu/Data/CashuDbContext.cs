@@ -39,6 +39,7 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
             entity.HasIndex(sk => sk.Amount);
             entity.HasIndex(sk => sk.Status);
             entity.HasIndex(sk => sk.ExportedTokenId);
+            entity.HasIndex(sk => sk.Secret).IsUnique(); 
 
             entity.Property(p => p.C)
                 .HasConversion(

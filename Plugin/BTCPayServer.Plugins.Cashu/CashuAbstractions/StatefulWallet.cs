@@ -260,14 +260,14 @@ public class StatefulWallet: IDisposable
     public async Task<SwapResult> Receive(List<Proof> proofsToReceive, ulong inputFee = 0)
     {
         await EnsureInitialized();
-        var keyset = await GetActiveKeyset();
-        var keys = await this.GetKeys(keyset.Id);
+        var keysetId = await _wallet.GetActiveKeysetId(_unit);
+        var keys = await GetKeys(keysetId);
 
         var amounts = proofsToReceive.Select(proof => proof.Amount).ToList();
         
         if (inputFee == 0)
         {
-            return await Swap(proofsToReceive, amounts, keyset.Id, keys);
+            return await Swap(proofsToReceive, amounts, keysetId, keys);
         }
         
         var inputAmount = amounts.Sum();
@@ -279,7 +279,7 @@ public class StatefulWallet: IDisposable
         var totalAmount = inputAmount - inputFee;
         
         amounts = Utils.SplitToProofsAmounts(totalAmount, keys!);
-        return await Swap(proofsToReceive, amounts, keyset.Id, keys);
+        return await Swap(proofsToReceive, amounts, keysetId, keys);
     }
 
     /// <summary>
@@ -295,7 +295,7 @@ public class StatefulWallet: IDisposable
     public async Task<SwapResult> Swap(List<Proof> proofsToSwap, List<ulong> amounts, KeysetId? keysetId = null, Keyset? keys = null, CancellationToken ct = default)
     {
         await EnsureInitialized();
-        keysetId ??= (await GetActiveKeyset()).Id;
+        keysetId ??= await _wallet.GetActiveKeysetId(_unit, ct);
         
         var outputs = await _wallet.CreateOutputs(amounts, keysetId, ct);
         
@@ -338,11 +338,7 @@ public class StatefulWallet: IDisposable
         await EnsureInitialized();
         
         // if no keysetId specified - choose active one
-        if (keysetId == null)
-        {
-            var localKeyset = await this.GetActiveKeyset();
-            keysetId = localKeyset.Id; // localKeyset.Id is KeysetId
-        }
+        keysetId ??= await _wallet.GetActiveKeysetId(_unit);
 
         var keysetResponse = await _wallet.GetKeys(keysetId, true, forceRefresh);
         
@@ -390,22 +386,6 @@ public class StatefulWallet: IDisposable
     
     
     /// <summary>
-    /// Returns active keyset for current unit
-    /// </summary>
-    /// <returns></returns>
-    public async Task<GetKeysetsResponse.KeysetItemResponse> GetActiveKeyset()
-    {
-        await EnsureInitialized();
-        
-        var keysets = await _wallet.GetKeysets();
-        
-        var filteredKeysets = keysets.Where(
-            keyset => keyset.Active && keyset.Id.ToString().StartsWith("00") && keyset.Unit == _unit);
-        var activeKeyset = filteredKeysets.OrderBy(keyset => keyset.InputFee).FirstOrDefault();
-        return activeKeyset ?? throw new CashuPluginException("Could not find active keyset for this unit!");
-    }
-    
-    /// <summary>
     /// Check if mint exists in database. If not, create it. It basically allows you to tie keys to this mint in db.
     /// </summary>
     /// <param name="db">database context. in this case - CashuDbContext instance</param>
@@ -413,13 +393,14 @@ public class StatefulWallet: IDisposable
     private async Task<Mint> GetOrCreateMintInDb(CashuDbContext db)
     {
         var mint = await db.Mints.FirstOrDefaultAsync(m => m.Url == _mintUrl);
-        
-        if (mint == null)
+
+        if (mint != null)
         {
-            mint = new Mint(_mintUrl);
-            db.Mints.Add(mint);
-            await db.SaveChangesAsync();
+            return mint;
         }
+        mint = new Mint(_mintUrl);
+        db.Mints.Add(mint);
+        await db.SaveChangesAsync();
         return mint;
     }
     
@@ -459,7 +440,7 @@ public class StatefulWallet: IDisposable
         if (_dbContextFactory == null || _storeId == null) return;
         
         await using var db = _dbContextFactory.CreateContext();
-        var mint = await GetOrCreateMintInDb(db);
+        await GetOrCreateMintInDb(db);
         
         var dbProofs = StoredProof.FromBatch(proofs, _storeId, ProofState.Available);
         db.Proofs.AddRange(dbProofs);
@@ -520,7 +501,6 @@ public class StatefulWallet: IDisposable
 
     }
     
-
     public void Dispose()
     {
         _wallet.Dispose();

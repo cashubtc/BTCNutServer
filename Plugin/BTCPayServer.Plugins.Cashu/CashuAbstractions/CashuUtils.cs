@@ -97,10 +97,15 @@ public static class CashuUtils
         }
 
         var proofs = token.Tokens.SelectMany(t => t.Proofs).ToList();
+        var firstToken = token.Tokens.FirstOrDefault();
+        if (firstToken == null)
+        {
+            throw new CashuPaymentException("Token contains no mint information.");
+        }
 
         return new SimplifiedCashuToken
         {
-            Mint = token.Tokens.First().Mint,
+            Mint = firstToken.Mint,
             Proofs = proofs,
             Memo = token.Memo,
             Unit = token.Unit ?? "sat"
