@@ -45,7 +45,12 @@ public class CashuPaymentMethodHandler(
         
         var due = Money.Coins(context.Prompt.Calculate().Due);
         var paymentRequest =
-            CashuUtils.CreatePaymentRequest(due, invoice.Id, paymentPath, cashuConfig.TrustedMintsUrls);
+            CashuUtils.CreatePaymentRequest(
+                due, 
+                invoice.Id, 
+                paymentPath, 
+                cashuConfig.PaymentModel == CashuPaymentModel.AutoConvert ? null : cashuConfig.TrustedMintsUrls // don't suggest any mints when AutoConvert
+                );
          context.Prompt.Destination = paymentRequest;
          
         if (cashuConfig.PaymentModel == CashuPaymentModel.HoldWhenTrusted)
