@@ -326,7 +326,7 @@ public class UICashuWalletController : Controller
         return View("Views/Cashu/FailedTransactions.cshtml", failedTransactions);
     }
 
-    [HttpPost("{storeId}/cashu/failed-transactions/{failedTransactionId}")]
+    [HttpPost("{storeId}/cashu/failed-transactions")]
     public async Task<IActionResult> PostFailedTransaction(string storeId, Guid failedTransactionId)
     {
         await using var db = _cashuDbContextFactory.CreateContext();
