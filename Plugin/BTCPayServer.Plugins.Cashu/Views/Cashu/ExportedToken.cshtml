@@ -8,53 +8,77 @@
     ViewData.SetActivePage(CashuPlugin.PluginNavKey, "Exported Token", "Configuration");
 }
 
-<div class="row justify-content-center">
-    <div class="col-xxl-6 col-xl-7 col-lg-8">
-        <div class="card">
-            <div class="card-header d-flex align-items-center justify-content-between">
-                <h3 class="card-title mb-0">Exported Cashu Token</h3>
-                <a href="@Url.Action("CashuWallet", "UICashuWallet", new { storeId = @Context.GetStoreData().Id })" class="btn-close" aria-label="Close"></a>
+<div class="row justify-content-center align-items-center" style="min-height: 80vh;">
+    <div class="col-xl-10 col-lg-11">
+        <div class="cashu-token-card">
+            @* Header *@
+            <div class="token-header">
+                <h3 class="mb-0">Sent Ecash</h3>
+                <a href="@Url.Action("CashuWallet", "UICashuWallet", new { storeId = @Context.GetStoreData().Id })" class="close-btn" aria-label="Close">
+                    <vc:icon symbol="close" />
+                </a>
             </div>
-            <div class="card-body p-4">
-                <div class="text-center mb-4">
-                    <div class="d-inline-block p-2 bg-white rounded shadow-sm border mb-3">
-                        <canvas id="qrcode" width="220" height="220" style="max-width: 100%; height: auto;"></canvas>
+
+            @* Horizontal Layout: QR Left | Info Right *@
+            <div class="token-content">
+                @* Left: QR Code *@
+                <div class="qr-section">
+                    <div class="qr-wrapper">
+                        <canvas id="qrcode" width="260" height="260"></canvas>
                     </div>
                     <div class="invisible" id="token-dummy-div" data-token="@Model.Token"></div>
-                    <p class="text-muted small">Scan with your Cashu wallet</p>
+                    <p class="qr-hint">Scan with Cashu wallet</p>
                 </div>
 
-                <div class="p-4 rounded-3 mb-4" style="background: var(--btcpay-body-bg); border: 1px solid var(--btcpay-border-color);">
-                    <div class="row g-3">
-                        <div class="col-sm-6">
-                            <label class="text-muted small text-uppercase fw-bold mb-1 d-block">Amount</label>
-                            <span class="h3 mb-0 fw-bold">@Model.FormatedAmount</span>
+                @* Right: Info & Actions *@
+                <div class="info-section">
+                    @* Amount - Big *@
+                    <div class="amount-section">
+                        <div class="amount-value">@Model.FormatedAmount</div>
+                    </div>
+
+                    @* Token Info Grid *@
+                    <div class="info-grid">
+                        <div class="info-row">
+                            <span class="info-label">
+                                <vc:icon symbol="swap" />
+                                Fee
+                            </span>
+                            <span class="info-value">0</span>
                         </div>
-                        <div class="col-sm-6 text-sm-end">
-                            <label class="text-muted small text-uppercase fw-bold mb-1 d-block">Mint</label>
-                            <code class="text-truncate d-inline-block small" style="max-width: 220px;" title="@Model.MintAddress">@Model.MintAddress</code>
+                        <div class="info-row">
+                            <span class="info-label">
+                                <vc:icon symbol="bitcoin" />
+                                Unit
+                            </span>
+                            <span class="info-value">SAT</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">
+                                <vc:icon symbol="wallet" />
+                                Mint
+                            </span>
+                            <span class="info-value mint-url" title="@Model.MintAddress">@Model.MintAddress</span>
                         </div>
                     </div>
-                </div>
 
-                <div class="mb-4">
-                    <label class="form-label fw-semibold text-muted small text-uppercase mb-2" for="tokenValue">Token String</label>
-                    <div class="input-group align-items-stretch">
-                        <textarea id="tokenValue" class="form-control font-monospace token-field" rows="5" readonly style="font-size: 0.85rem; background-color: var(--btcpay-bg-tile); border-color: var(--btcpay-border-color); resize: none;">@Model.Token</textarea>
-                        <button type="button" class="btn btn-outline-primary token-copy" data-clipboard-target="#tokenValue">Copy</button>
-                    </div>
-                </div>
+                    @* Big Copy Button *@
+                    <button type="button" class="copy-button" data-clipboard-text="@Model.Token" id="copyTokenBtn">
+                        COPY TOKEN
+                    </button>
 
-                <div class="alert alert-warning p-3 mb-4 border-0 shadow-none d-flex gap-3 align-items-start rounded-3">
-                    <vc:icon symbol="warning" />
-                    <div class="small">
-                        <strong>Security Warning:</strong> Anyone with this token can spend it. Keep it secure and do not share it over unencrypted channels.
+                    @* Payment Hint *@
+                    <div class="payment-hint">
+                        <vc:icon symbol="info" />
+                        <span>Scan QR or copy to receive ecash</span>
                     </div>
                 </div>
             </div>
-            <div class="card-footer bg-transparent border-0 text-center pb-4">
-                <a href="@Url.Action("CashuWallet", "UICashuWallet", new { storeId = @Context.GetStoreData().Id })" class="btn btn-secondary px-4">
-                    Back to Wallet
+
+            @* Back Link - Footer *@
+            <div class="back-link">
+                <a href="@Url.Action("CashuWallet", "UICashuWallet", new { storeId = @Context.GetStoreData().Id })">
+                    ← Back to Wallet
                 </a>
             </div>
         </div>
@@ -62,19 +86,274 @@
 </div>
 
 <style>
-    .font-monospace {
-        font-family: var(--btcpay-font-family-monospace) !important;
-        word-break: break-all;
+    /* Main Card - Horizontal Layout */
+    .cashu-token-card {
+        background: var(--btcpay-bg-tile);
+        border-radius: 1rem;
+        padding: 2rem;
+        box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.1);
+        border: 1px solid var(--btcpay-border-color);
+        max-width: 900px;
+        margin: 0 auto;
     }
-    .token-field {
-        min-height: 140px;
+    
+    /* Header */
+    .token-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
     }
-    .token-copy {
-        min-width: 96px;
+    
+    .token-header h3 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--btcpay-body-text);
     }
-    .alert-warning {
-        background-color: rgba(255, 193, 7, 0.1) !important;
-        color: var(--btcpay-warning) !important;
+    
+    .close-btn {
+        color: var(--btcpay-body-text-muted);
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .close-btn:hover {
+        background: var(--btcpay-body-bg);
+        color: var(--btcpay-body-text);
+    }
+    
+    /* Horizontal Content Layout */
+    .token-content {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 3rem;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+    
+    /* QR Section - Left Side */
+    .qr-section {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    
+    .qr-wrapper {
+        padding: 1rem;
+        background: white;
+        border-radius: 1rem;
+        box-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.08);
+        border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+    
+    #qrcode {
+        display: block;
+        max-width: 100%;
+        height: auto;
+    }
+    
+    .qr-hint {
+        margin: 0;
+        font-size: 0.875rem;
+        color: var(--btcpay-body-text-muted);
+        text-align: center;
+    }
+    
+    /* Info Section - Right Side */
+    .info-section {
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+    }
+    
+    /* Amount - Big */
+    .amount-section {
+        text-align: left;
+    }
+    
+    .amount-value {
+        font-size: 3rem;
+        font-weight: 700;
+        color: var(--btcpay-body-text);
+        letter-spacing: -0.02em;
+        line-height: 1;
+    }
+    
+    /* Info Grid - Compact */
+    .info-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .info-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.625rem 1rem;
+        background: var(--btcpay-body-bg);
+        border-radius: 0.5rem;
+        border: 1px solid var(--btcpay-border-color);
+    }
+    
+    .info-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+        color: var(--btcpay-body-text-muted);
+        font-weight: 500;
+    }
+    
+    .info-label svg {
+        width: 1rem;
+        height: 1rem;
+        opacity: 0.7;
+    }
+    
+    .info-value {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--btcpay-body-text);
+    }
+    
+    .mint-url {
+        font-family: var(--btcpay-font-family-monospace);
+        font-size: 0.75rem;
+        max-width: 250px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    /* Big Copy Button */
+    .copy-button {
+        width: 100%;
+        padding: 1rem;
+        background: var(--btcpay-primary);
+        color: white;
+        border: none;
+        border-radius: 0.75rem;
+        font-size: 1rem;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .copy-button:hover {
+        background: var(--btcpay-primary-accent);
+        transform: translateY(-2px);
+        box-shadow: 0 0.5rem 1rem rgba(var(--btcpay-primary-rgb), 0.3);
+    }
+    
+    .copy-button:active {
+        transform: translateY(0);
+    }
+    
+    .copy-button.copied {
+        background: var(--btcpay-success);
+    }
+    
+    /* Payment Hint */
+    .payment-hint {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1rem;
+        background: var(--btcpay-body-bg);
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        color: var(--btcpay-body-text-muted);
+    }
+    
+    .payment-hint svg {
+        width: 1rem;
+        height: 1rem;
+        flex-shrink: 0;
+    }
+    
+    /* Back Link */
+    .back-link {
+        text-align: center;
+        padding-top: 1rem;
+        border-top: 1px solid var(--btcpay-border-color);
+    }
+    
+    .back-link a {
+        color: var(--btcpay-body-text-muted);
+        text-decoration: none;
+        font-size: 0.875rem;
+        transition: color 0.2s;
+    }
+    
+    .back-link a:hover {
+        color: var(--btcpay-primary);
+    }
+    
+    /* Responsive - Stack on Mobile */
+    @@media (max-width: 768px) {
+        .token-content {
+            grid-template-columns: 1fr;
+            gap: 2rem;
+        }
+        
+        .qr-section {
+            justify-content: center;
+        }
+        
+        .amount-section {
+            text-align: center;
+        }
+        
+        .amount-value {
+            font-size: 2.5rem;
+        }
+        
+        #qrcode {
+            width: 240px;
+            height: 240px;
+        }
+    }
+    
+    @@media (max-width: 576px) {
+        .cashu-token-card {
+            padding: 1.5rem;
+        }
+        
+        .token-content {
+            gap: 1.5rem;
+        }
     }
 </style>
+<script>
+    // Copy button functionality
+    document.getElementById('copyTokenBtn')?.addEventListener('click', function() {
+        const token = this.getAttribute('data-clipboard-text');
+        const button = this;
+        
+        navigator.clipboard.writeText(token).then(function() {
+            // Success feedback
+            const originalText = button.textContent;
+            button.textContent = 'COPIED!';
+            button.classList.add('copied');
+            
+            setTimeout(function() {
+                button.textContent = originalText;
+                button.classList.remove('copied');
+            }, 2000);
+        }).catch(function(err) {
+            console.error('Failed to copy:', err);
+            button.textContent = 'FAILED';
+            setTimeout(function() {
+                button.textContent = 'COPY';
+            }, 2000);
+        });
+    });
+</script>
 <script type="module" src="~/Resources/js/bundle.js" asp-append-version="true" />
