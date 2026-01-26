@@ -25,9 +25,10 @@ public class FailedTransaction
     [NotMapped]
     public Proof[] InputProofs
     {
-        get => string.IsNullOrEmpty(InputProofsJson)
-            ? []
-            : JsonSerializer.Deserialize<Proof[]>(InputProofsJson) ?? [];
+        get =>
+            string.IsNullOrEmpty(InputProofsJson)
+                ? []
+                : JsonSerializer.Deserialize<Proof[]>(InputProofsJson) ?? [];
         set
         {
             InputProofsJson = JsonSerializer.Serialize(value);
@@ -36,6 +37,7 @@ public class FailedTransaction
     }
 
     public required OperationType OperationType { get; set; }
+
     // For melt operation these will be for fee return. For swap these will contain outputs sent to mint.
     public required CashuUtils.OutputData OutputData { get; set; }
     public MeltDetails? MeltDetails { get; set; }
@@ -51,12 +53,10 @@ public class MeltDetails
     public required DateTimeOffset Expiry { get; set; }
     public required string LightningInvoiceId { get; set; }
     public required string Status { get; set; }
-
 }
-
 
 public enum OperationType
 {
     Swap,
-    Melt
+    Melt,
 }

@@ -8,10 +8,10 @@ namespace BTCPayServer.Plugins.Cashu.Errors;
 public class CashuPaymentException : Exception
 {
     public CashuPaymentException() { }
-    
+
     public CashuPaymentException(string message)
         : base(message) { }
-    
+
     public CashuPaymentException(string message, Exception inner)
         : base(message, inner) { }
 }

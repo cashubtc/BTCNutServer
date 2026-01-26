@@ -10,28 +10,32 @@ using BTCPayServer.Data;
 using BTCPayServer.Models.StoreViewModels;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
+using BTCPayServer.Plugins.Cashu.Data.Models;
+using BTCPayServer.Plugins.Cashu.Services;
 using BTCPayServer.Plugins.Cashu.ViewModels;
+using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
+using DotNut.NBitcoin.BIP39;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using BTCPayServer.Plugins.Cashu.Data.Models;
-using BTCPayServer.Plugins.Cashu.Services;
-using BTCPayServer.Services.Invoices;
-using DotNut.NBitcoin.BIP39;
 using StoreData = BTCPayServer.Data.StoreData;
 
 namespace BTCPayServer.Plugins.Cashu.Controllers;
 
 [Route("stores/{storeId}/cashu")]
-[Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+[Authorize(
+    Policy = Policies.CanModifyStoreSettings,
+    AuthenticationSchemes = AuthenticationSchemes.Cookie
+)]
 public class UICashuOnboardingController : Controller
 {
     public UICashuOnboardingController(
         StoreRepository storeRepository,
         CashuDbContextFactory cashuDbContextFactory,
         PaymentMethodHandlerDictionary handlers,
-        RestoreService restoreService)
+        RestoreService restoreService
+    )
     {
         _storeRepository = storeRepository;
         _cashuDbContextFactory = cashuDbContextFactory;
@@ -55,16 +59,16 @@ public class UICashuOnboardingController : Controller
             return NotFound();
         }
 
-        var model = new GettingStartedViewModel()
-        {
-            StoreId = StoreData.Id,
-        };
+        var model = new GettingStartedViewModel() { StoreId = StoreData.Id };
 
         return View("Views/Cashu/Onboarding/GettingStarted.cshtml", model);
     }
 
     [HttpGet("restore-wallet")]
-    public async Task<IActionResult> RestoreFromMnemonic(string storeId, WalletRestoreViewModel? model)
+    public async Task<IActionResult> RestoreFromMnemonic(
+        string storeId,
+        WalletRestoreViewModel? model
+    )
     {
         return View("Views/Cashu/Onboarding/RestoreFromMnemonic.cshtml", model);
     }
@@ -76,7 +80,7 @@ public class UICashuOnboardingController : Controller
         {
             return NotFound();
         }
-        
+
         //validate wordlist
         Wordlist wordlist = Wordlist.English;
         var wordSet = new HashSet<string>(wordlist.GetWords());
@@ -97,8 +101,10 @@ public class UICashuOnboardingController : Controller
         {
             var mint = model.MintUrls[i].TrimEnd('/');
             model.MintUrls[i] = mint;
-            if (!Uri.TryCreate(mint, UriKind.Absolute, out var uri) ||
-                (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
+            if (
+                !Uri.TryCreate(mint, UriKind.Absolute, out var uri)
+                || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp)
+            )
             {
                 invalidMintsIndices.Add(i);
             }
@@ -111,20 +117,23 @@ public class UICashuOnboardingController : Controller
             StringBuilder msg = new StringBuilder();
             if (invalidWordIndices.Count > 0)
             {
-                msg.AppendLine($"Invalid word indices: {string.Join(",", invalidWordIndices.Select(i=>i+1))}");
+                msg.AppendLine(
+                    $"Invalid word indices: {string.Join(",", invalidWordIndices.Select(i => i + 1))}"
+                );
             }
 
             if (invalidMintsIndices.Count > 0)
             {
-                msg.AppendLine($"Invalid mint indices: {string.Join(",", invalidMintsIndices.Select(i=>i+1))}");
+                msg.AppendLine(
+                    $"Invalid mint indices: {string.Join(",", invalidMintsIndices.Select(i => i + 1))}"
+                );
             }
-            
+
             TempData[WellKnownTempData.ErrorMessage] = msg.ToString();
 
             return View("Views/Cashu/Onboarding/RestoreFromMnemonic.cshtml", model);
         }
 
-        
         var jobId = _restoreService.QueueRestore(StoreData.Id, model.MintUrls, model.Mnemonic);
         return RedirectToAction(nameof(RestoreStatus), new { storeId = StoreData.Id, jobId });
     }
@@ -132,7 +141,7 @@ public class UICashuOnboardingController : Controller
     [HttpGet("restore-status/{jobId}")]
     public async Task<IActionResult> RestoreStatus(string storeId, string jobId)
     {
-        var status =  _restoreService.GetRestoreStatus(jobId);
+        var status = _restoreService.GetRestoreStatus(jobId);
         if (status == null)
         {
             return NotFound();
@@ -149,7 +158,9 @@ public class UICashuOnboardingController : Controller
             return NotFound();
         }
         // in case of user coming back...
-        var existingMnemonic = await db.CashuWalletConfig.SingleOrDefaultAsync(cwc => cwc.StoreId == StoreData.Id);
+        var existingMnemonic = await db.CashuWalletConfig.SingleOrDefaultAsync(cwc =>
+            cwc.StoreId == StoreData.Id
+        );
         if (existingMnemonic != null)
         {
             var existingModel = new RecoverySeedBackupViewModel()
@@ -158,7 +169,7 @@ public class UICashuOnboardingController : Controller
                 IsStored = true,
                 Mnemonic = existingMnemonic.WalletMnemonic.ToString(),
                 RequireConfirm = true,
-                ReturnUrl = Url.Action("ConfirmMnemonic", new { storeId = StoreData.Id })
+                ReturnUrl = Url.Action("ConfirmMnemonic", new { storeId = StoreData.Id }),
             };
             return View("Views/Cashu/Onboarding/CreateMnemonic.cshtml", existingModel);
         }
@@ -177,7 +188,7 @@ public class UICashuOnboardingController : Controller
             IsStored = true,
             Mnemonic = walletConfig.WalletMnemonic.ToString(),
             RequireConfirm = true,
-            ReturnUrl = Url.Action("ConfirmMnemonic", new { storeId = StoreData.Id })
+            ReturnUrl = Url.Action("ConfirmMnemonic", new { storeId = StoreData.Id }),
         };
         return View("Views/Cashu/Onboarding/CreateMnemonic.cshtml", model);
     }
@@ -190,15 +201,17 @@ public class UICashuOnboardingController : Controller
         {
             return NotFound();
         }
-        
-        var userMnemonic = await db.CashuWalletConfig.SingleOrDefaultAsync(cwc => cwc.StoreId == StoreData.Id);
+
+        var userMnemonic = await db.CashuWalletConfig.SingleOrDefaultAsync(cwc =>
+            cwc.StoreId == StoreData.Id
+        );
         if (userMnemonic == null || userMnemonic.Verified)
         {
             return NotFound();
         }
 
         var randomMnemonic = new Mnemonic(Wordlist.English, WordCount.Twelve);
-        
+
         var rand = new Random();
         var randomList = new List<string>();
         randomList.AddRange(userMnemonic.WalletMnemonic.Words.Take(4));
@@ -209,7 +222,7 @@ public class UICashuOnboardingController : Controller
         {
             Mnemonic = userMnemonic.WalletMnemonic.ToString(),
             Words = randomList,
-            ViewMnemonicUrl =  Url.Action("ConfirmMnemonic", new { storeId = StoreData.Id })
+            ViewMnemonicUrl = Url.Action("ConfirmMnemonic", new { storeId = StoreData.Id }),
         };
 
         return View("Views/Cashu/Onboarding/ConfirmMnemonic.cshtml", model);
@@ -219,12 +232,14 @@ public class UICashuOnboardingController : Controller
     public async Task<IActionResult> ConfirmMnemonic(string storeId, string fourWordChunk)
     {
         await using var db = _cashuDbContextFactory.CreateContext();
-        var userMnemonic =await  db.CashuWalletConfig.SingleOrDefaultAsync(cwc => cwc.StoreId == StoreData.Id);
+        var userMnemonic = await db.CashuWalletConfig.SingleOrDefaultAsync(cwc =>
+            cwc.StoreId == StoreData.Id
+        );
         if (userMnemonic == null || userMnemonic.Verified)
         {
             return NotFound();
         }
-        
+
         var validChunk = string.Join("", userMnemonic.WalletMnemonic.Words.Take(4));
         if (!Equals(validChunk, fourWordChunk))
         {
@@ -233,12 +248,12 @@ public class UICashuOnboardingController : Controller
         }
         userMnemonic.Verified = true;
         await db.SaveChangesAsync();
-        
+
         TempData[WellKnownTempData.SuccessMessage] = $"Wallet created and verified successfully!";
         var hasLightning = StoreData.IsLightningEnabled("BTC");
         if (!hasLightning)
         {
-            return RedirectToAction("InitWithoutLightning", new {storeId = StoreData.Id});
+            return RedirectToAction("InitWithoutLightning", new { storeId = StoreData.Id });
         }
         return RedirectToAction("StoreConfig", "UICashuStores", new { storeId = StoreData.Id });
     }
@@ -250,12 +265,12 @@ public class UICashuOnboardingController : Controller
         {
             return NotFound();
         }
-        
+
         var model = new CashuInitWithoutLightningViewModel
         {
             TrustedMintsUrls = string.Empty,
             PaymentAcceptanceModel = CashuPaymentModel.TrustedMintsOnly,
-            ReturnUrl =  Url.Action("StoreConfig", "UICashuStores", new { storeId = StoreData.Id })
+            ReturnUrl = Url.Action("StoreConfig", "UICashuStores", new { storeId = StoreData.Id }),
         };
         return View("Views/Cashu/Onboarding/InitWithoutLightning.cshtml", model);
     }

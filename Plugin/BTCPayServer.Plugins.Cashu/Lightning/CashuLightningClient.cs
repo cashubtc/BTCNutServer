@@ -26,7 +26,7 @@
 //         this._storeId = storeId;
 //         this._logger = logger;
 //         this._dbContextFactory = dbContextFactory;
-//         
+//
 //         this._wallet = Wallet.Create().WithMint(_mintUrl);
 //     }
 //
@@ -34,14 +34,14 @@
 //     {
 //         return $"type=cashu;mint-url={_mintUrl};store-id={_storeId};";
 //     }
-//     
+//
 //     //todo add database
 //     public async Task<LightningInvoice> GetInvoice(string invoiceId, CancellationToken cancellation = new CancellationToken())
 //     {
 //         using var db = _dbContextFactory.CreateDbContext();
 //         // var invoice = db.CashuWalletConfig
 //     }
-//     
+//
 //     public async  Task<LightningInvoice> GetInvoice(uint256 paymentHash, CancellationToken cancellation = new CancellationToken())
 //     {
 //         return await GetInvoice(paymentHash.ToString(), cancellation);
@@ -77,7 +77,7 @@
 //         CancellationToken cancellation = new CancellationToken())
 //     {
 //         //we can't do expiry, so it's ignored
-//         
+//
 //         using var wallet = Wallet
 //             .Create()
 //             .WithMint(_mintUrl);
@@ -87,13 +87,13 @@
 //             .WithDescription(description)
 //             .ProcessAsyncBolt11(cancellation);
 //         var quote = mintHAndler.GetQuote();
-//         
+//
 //         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellation);
-//         
+//
 //         var bolt11 = BOLT11PaymentRequest.Parse(quote.Request, Network.Main);
 //         db.LightningClientQuotes.Add(new LightningClientQuote()
 //         {
-//             
+//
 //         })
 //         //todo add to db
 //         return new LightningInvoice
@@ -102,7 +102,7 @@
 //             BOLT11 = quote.Request,
 //             Amount = quote.Amount is not null ? LightMoney.MilliSatoshis(quote.Amount.Value) : 0,
 //             ExpiresAt = quote.Expiry is not null ? DateTimeOffset.FromUnixTimeSeconds(quote.Expiry.Value): bolt11.ExpiryDate,
-//             
+//
 //         };
 //     }
 //
@@ -130,7 +130,7 @@
 //             .Where(p => p.StoreId == this._storeId && keysetIds.Contains(p.Id))
 //             .Select(p => p.Amount).AsEnumerable()
 //             .Sum();
-//         
+//
 //         return new LightningNodeBalance()
 //         {
 //             OffchainBalance = new OffchainBalance()
@@ -155,7 +155,7 @@
 //     {
 //         return await Pay(bolt11, new PayInvoiceParams(), cancellation);
 //     }
-//     
+//
 //     /*
 //      * ============= *
 //      * Not supported *

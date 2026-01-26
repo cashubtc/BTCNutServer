@@ -5,30 +5,40 @@ using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
 
 namespace BTCPayServer.Plugins.Cashu.PaymentHandlers;
-public class CashuStatusProvider(StoreRepository storeRepository,
-    PaymentMethodHandlerDictionary handlers)
+
+public class CashuStatusProvider(
+    StoreRepository storeRepository,
+    PaymentMethodHandlerDictionary handlers
+)
 {
     public async Task<bool> CashuEnabled(string storeId)
     {
         try
         {
             var storeData = await storeRepository.FindStore(storeId);
-            
+
             var currentPaymentMethodConfig =
-                storeData?.GetPaymentMethodConfig<CashuPaymentMethodConfig>(CashuPlugin.CashuPmid, handlers);
+                storeData?.GetPaymentMethodConfig<CashuPaymentMethodConfig>(
+                    CashuPlugin.CashuPmid,
+                    handlers
+                );
             if (currentPaymentMethodConfig == null)
             {
                 return false;
             }
-            
-            if (currentPaymentMethodConfig.PaymentModel is CashuPaymentModel.HoldWhenTrusted or CashuPaymentModel.AutoConvert)
+
+            if (
+                currentPaymentMethodConfig.PaymentModel
+                is CashuPaymentModel.HoldWhenTrusted
+                    or CashuPaymentModel.AutoConvert
+            )
             {
                 if (!storeData.IsLightningEnabled("BTC"))
                 {
                     return false;
                 }
             }
-            
+
             var excludeFilters = storeData.GetStoreBlob().GetExcludedPaymentMethods();
             var enabled = !excludeFilters.Match(CashuPlugin.CashuPmid);
 

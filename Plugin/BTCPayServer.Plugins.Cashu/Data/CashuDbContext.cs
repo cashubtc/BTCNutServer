@@ -9,12 +9,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using ISecret = DotNut.ISecret;
 
-
 namespace BTCPayServer.Plugins.Cashu.Data;
 
 public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool designTime = false)
     : DbContext(options)
-
 {
     public static string DefaultPluginSchema = "BTCPayServer.Plugins.Cashu";
     public DbSet<Mint> Mints { get; set; }
@@ -24,7 +22,7 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
     public DbSet<ExportedToken> ExportedTokens { get; set; }
     public DbSet<CashuWalletConfig> CashuWalletConfig { get; set; }
     public DbSet<StoreKeysetCounter> StoreKeysetCounters { get; set; }
-    
+
     // public DbSet<LightningClientQuote> LightningClientQuotes { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -39,108 +37,165 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
             entity.HasIndex(sk => sk.Amount);
             entity.HasIndex(sk => sk.Status);
             entity.HasIndex(sk => sk.ExportedTokenId);
-            entity.HasIndex(sk => sk.Secret).IsUnique(); 
+            entity.HasIndex(sk => sk.Secret).IsUnique();
 
-            entity.Property(p => p.C)
+            entity
+                .Property(p => p.C)
+                .HasConversion(pk => pk.ToString(), pk => new PubKey(pk, false));
+            entity
+                .Property(p => p.Id)
+                .HasConversion(ki => ki.ToString(), ki => new KeysetId(ki.ToString()));
+            entity
+                .Property(p => p.Secret)
                 .HasConversion(
-                    pk => pk.ToString(),
-                    pk => new PubKey(pk, false)
+                    s =>
+                        JsonSerializer.Serialize(
+                            s,
+                            new JsonSerializerOptions { Converters = { new SecretJsonConverter() } }
+                        ),
+                    s =>
+                        JsonSerializer.Deserialize<ISecret>(
+                            s,
+                            new JsonSerializerOptions { Converters = { new SecretJsonConverter() } }
+                        )
                 );
-            entity.Property(p => p.Id)
+            entity
+                .Property(p => p.DLEQ)
                 .HasConversion(
-                    ki => ki.ToString(),
-                    ki => new KeysetId(ki.ToString())
+                    d =>
+                        d == null
+                            ? null
+                            : JsonSerializer.Serialize(d, (JsonSerializerOptions)null!),
+                    d =>
+                        d == null
+                            ? null
+                            : JsonSerializer.Deserialize<DLEQProof>(d, (JsonSerializerOptions)null!)
                 );
-            entity.Property(p => p.Secret)
-                .HasConversion(
-                    s => JsonSerializer.Serialize(s,
-                        new JsonSerializerOptions { Converters = { new SecretJsonConverter() } }),
-                    s => JsonSerializer.Deserialize<ISecret>(s,
-                        new JsonSerializerOptions { Converters = { new SecretJsonConverter() } })
-                );
-            entity.Property(p => p.DLEQ)
-                .HasConversion(
-                    d => d == null ? null : JsonSerializer.Serialize(d, (JsonSerializerOptions)null!),
-                    d => d == null ? null : JsonSerializer.Deserialize<DLEQProof>(d, (JsonSerializerOptions)null!)
-                );
-            entity.Property(p => p.P2PkE)
+            entity
+                .Property(p => p.P2PkE)
                 .HasConversion(
                     e => e == null ? null : e.ToString(),
                     e => e == null ? null : new PubKey(e, false)
-                    );
+                );
         });
 
         modelBuilder.Entity<MintKeys>(entity =>
         {
-            entity.Property(mk => mk.KeysetId).HasConversion(
-                kid => kid.ToString(),
-                kid => new KeysetId(kid.ToString())
-            );
+            entity
+                .Property(mk => mk.KeysetId)
+                .HasConversion(kid => kid.ToString(), kid => new KeysetId(kid.ToString()));
             entity.HasKey(mk => new { mk.MintId, mk.KeysetId });
 
             entity.HasIndex(mk => mk.MintId);
 
-            entity.HasOne(mk => mk.Mint)
-                .WithMany(m => m.Keysets)
-                .HasForeignKey(mk => mk.MintId);
+            entity.HasOne(mk => mk.Mint).WithMany(m => m.Keysets).HasForeignKey(mk => mk.MintId);
 
-
-            entity.Property(mk => mk.Keyset).HasConversion(
-                ks => JsonSerializer.Serialize(ks,
-                    new JsonSerializerOptions { Converters = { new KeysetJsonConverter() } }),
-                ks => JsonSerializer.Deserialize<Keyset>(ks,
-                    new JsonSerializerOptions { Converters = { new KeysetJsonConverter() } }));
+            entity
+                .Property(mk => mk.Keyset)
+                .HasConversion(
+                    ks =>
+                        JsonSerializer.Serialize(
+                            ks,
+                            new JsonSerializerOptions { Converters = { new KeysetJsonConverter() } }
+                        ),
+                    ks =>
+                        JsonSerializer.Deserialize<Keyset>(
+                            ks,
+                            new JsonSerializerOptions { Converters = { new KeysetJsonConverter() } }
+                        )
+                );
         });
-        
+
         modelBuilder.Entity<FailedTransaction>(entity =>
         {
             entity.HasKey(t => t.Id);
             entity.HasIndex(t => t.InvoiceId);
             entity.OwnsOne(t => t.MeltDetails);
-            entity.OwnsOne(t => t.OutputData, fo =>
-            {
-                //Secrets conversion
-                fo.Property(f => f.Secrets)
-                    .HasConversion(
-                        s => JsonSerializer.Serialize(s, new JsonSerializerOptions
-                            { Converters = { new SecretJsonConverter() } }),
-                        s => JsonSerializer.Deserialize<ISecret[]>(s, new JsonSerializerOptions
-                            { Converters = { new SecretJsonConverter() } })
-                    ).Metadata.SetValueComparer(
-                        new ValueComparer<ISecret[]>(
-                            (c1, c2) => c1.SequenceEqual(c2),
-                            c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
-                            c => c.ToArray()));
+            entity.OwnsOne(
+                t => t.OutputData,
+                fo =>
+                {
+                    //Secrets conversion
+                    fo.Property(f => f.Secrets)
+                        .HasConversion(
+                            s =>
+                                JsonSerializer.Serialize(
+                                    s,
+                                    new JsonSerializerOptions
+                                    {
+                                        Converters = { new SecretJsonConverter() },
+                                    }
+                                ),
+                            s =>
+                                JsonSerializer.Deserialize<ISecret[]>(
+                                    s,
+                                    new JsonSerializerOptions
+                                    {
+                                        Converters = { new SecretJsonConverter() },
+                                    }
+                                )
+                        )
+                        .Metadata.SetValueComparer(
+                            new ValueComparer<ISecret[]>(
+                                (c1, c2) => c1.SequenceEqual(c2),
+                                c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
+                                c => c.ToArray()
+                            )
+                        );
 
-                //BlindingFactors conversion
-                fo.Property(f => f.BlindingFactors)
-                    .HasConversion(
-                        bf => JsonSerializer.Serialize(bf, new JsonSerializerOptions
-                            { Converters = { new PrivKeyJsonConverter() } }),
-                        bf => JsonSerializer.Deserialize<PrivKey[]>(bf, new JsonSerializerOptions
-                            { Converters = { new PrivKeyJsonConverter() } })
-                    ).Metadata.SetValueComparer(
-                        new ValueComparer<PrivKey[]>(
-                            (c1, c2) => c1.SequenceEqual(c2),
-                            c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
-                            c => c.ToArray()));
+                    //BlindingFactors conversion
+                    fo.Property(f => f.BlindingFactors)
+                        .HasConversion(
+                            bf =>
+                                JsonSerializer.Serialize(
+                                    bf,
+                                    new JsonSerializerOptions
+                                    {
+                                        Converters = { new PrivKeyJsonConverter() },
+                                    }
+                                ),
+                            bf =>
+                                JsonSerializer.Deserialize<PrivKey[]>(
+                                    bf,
+                                    new JsonSerializerOptions
+                                    {
+                                        Converters = { new PrivKeyJsonConverter() },
+                                    }
+                                )
+                        )
+                        .Metadata.SetValueComparer(
+                            new ValueComparer<PrivKey[]>(
+                                (c1, c2) => c1.SequenceEqual(c2),
+                                c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
+                                c => c.ToArray()
+                            )
+                        );
 
-                //BlindedMessages conversion
-                fo.Property(f => f.BlindedMessages)
-                    .HasConversion(
-                        bm => JsonSerializer.Serialize(bm, (JsonSerializerOptions)null!),
-                        bm => JsonSerializer.Deserialize<BlindedMessage[]>(bm, (JsonSerializerOptions)null!)
-                    ).Metadata.SetValueComparer(
-                        new ValueComparer<BlindedMessage[]>(
-                            (c1, c2) => c1.SequenceEqual(c2),
-                            c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
-                            c => c.ToArray()));
-            });
+                    //BlindedMessages conversion
+                    fo.Property(f => f.BlindedMessages)
+                        .HasConversion(
+                            bm => JsonSerializer.Serialize(bm, (JsonSerializerOptions)null!),
+                            bm =>
+                                JsonSerializer.Deserialize<BlindedMessage[]>(
+                                    bm,
+                                    (JsonSerializerOptions)null!
+                                )
+                        )
+                        .Metadata.SetValueComparer(
+                            new ValueComparer<BlindedMessage[]>(
+                                (c1, c2) => c1.SequenceEqual(c2),
+                                c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
+                                c => c.ToArray()
+                            )
+                        );
+                }
+            );
         });
 
         modelBuilder.Entity<ExportedToken>(entity =>
         {
-            entity.HasMany(et => et.Proofs)
+            entity
+                .HasMany(et => et.Proofs)
                 .WithOne()
                 .HasForeignKey(sp => sp.ExportedTokenId)
                 .OnDelete(DeleteBehavior.SetNull);
@@ -148,25 +203,20 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
 
         modelBuilder.Entity<CashuWalletConfig>(entity =>
         {
-            entity.Property(cwc => cwc.WalletMnemonic)
-                .HasConversion(
-                    m => m.ToString(),
-                    wm => new Mnemonic(wm, Wordlist.English)
-                );
-        
+            entity
+                .Property(cwc => cwc.WalletMnemonic)
+                .HasConversion(m => m.ToString(), wm => new Mnemonic(wm, Wordlist.English));
+
             entity.HasKey(cwc => cwc.StoreId);
         });
-        
+
         modelBuilder.Entity<StoreKeysetCounter>(entity =>
         {
-            entity.Property(skc=>skc.KeysetId)
-                .HasConversion(
-                    ki => ki.ToString(),
-                    ki => new KeysetId(ki.ToString())
-                );
+            entity
+                .Property(skc => skc.KeysetId)
+                .HasConversion(ki => ki.ToString(), ki => new KeysetId(ki.ToString()));
 
-            entity.HasKey(skc => new {skc.StoreId, skc.KeysetId});
+            entity.HasKey(skc => new { skc.StoreId, skc.KeysetId });
         });
     }
 }
-

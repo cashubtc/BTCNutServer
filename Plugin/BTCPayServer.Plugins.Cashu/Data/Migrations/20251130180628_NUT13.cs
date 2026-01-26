@@ -15,7 +15,8 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
                 schema: "BTCPayServer.Plugins.Cashu",
                 table: "Proofs",
                 type: "text",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.CreateTable(
                 name: "CashuWalletConfig",
@@ -24,12 +25,13 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
                 {
                     StoreId = table.Column<string>(type: "text", nullable: false),
                     WalletMnemonic = table.Column<string>(type: "text", nullable: true),
-                    Verified = table.Column<bool>(type: "boolean", nullable: false)
+                    Verified = table.Column<bool>(type: "boolean", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_CashuWalletConfig", x => x.StoreId);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "StoreKeysetCounters",
@@ -38,12 +40,13 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
                 {
                     StoreId = table.Column<string>(type: "text", nullable: false),
                     KeysetId = table.Column<string>(type: "text", nullable: false),
-                    Counter = table.Column<int>(type: "integer", nullable: false)
+                    Counter = table.Column<int>(type: "integer", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_StoreKeysetCounters", x => new { x.StoreId, x.KeysetId });
-                });
+                }
+            );
         }
 
         /// <inheritdoc />
@@ -51,16 +54,19 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
         {
             migrationBuilder.DropTable(
                 name: "CashuWalletConfig",
-                schema: "BTCPayServer.Plugins.Cashu");
+                schema: "BTCPayServer.Plugins.Cashu"
+            );
 
             migrationBuilder.DropTable(
                 name: "StoreKeysetCounters",
-                schema: "BTCPayServer.Plugins.Cashu");
+                schema: "BTCPayServer.Plugins.Cashu"
+            );
 
             migrationBuilder.DropColumn(
                 name: "P2PkE",
                 schema: "BTCPayServer.Plugins.Cashu",
-                table: "Proofs");
+                table: "Proofs"
+            );
         }
     }
 }

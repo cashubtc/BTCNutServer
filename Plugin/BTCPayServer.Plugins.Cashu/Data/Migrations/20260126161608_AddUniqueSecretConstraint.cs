@@ -15,7 +15,8 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
                 schema: "BTCPayServer.Plugins.Cashu",
                 table: "Proofs",
                 column: "Secret",
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
@@ -24,7 +25,8 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
             migrationBuilder.DropIndex(
                 name: "IX_Proofs_Secret",
                 schema: "BTCPayServer.Plugins.Cashu",
-                table: "Proofs");
+                table: "Proofs"
+            );
         }
     }
 }

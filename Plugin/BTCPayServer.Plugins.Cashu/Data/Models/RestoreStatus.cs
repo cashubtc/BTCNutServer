@@ -7,5 +7,5 @@ public enum RestoreState
     Completed,
     Cancelled,
     CompletedWithErrors,
-    Failed
+    Failed,
 }

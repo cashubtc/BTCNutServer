@@ -31,7 +31,8 @@ public class StatefulWalletFactory
         IOptions<LightningNetworkOptions> lightningNetworkOptions,
         CashuDbContextFactory cashuDbContextFactory,
         BTCPayNetworkProvider networkProvider,
-        ILogger<StatefulWalletFactory> logger)
+        ILogger<StatefulWalletFactory> logger
+    )
     {
         _storeRepository = storeRepository;
         _handlers = handlers;
@@ -42,7 +43,11 @@ public class StatefulWalletFactory
         _logger = logger;
     }
 
-    public async Task<StatefulWallet> CreateAsync(string storeId, string mintUrl, string unit = "sat")
+    public async Task<StatefulWallet> CreateAsync(
+        string storeId,
+        string mintUrl,
+        string unit = "sat"
+    )
     {
         var store = await _storeRepository.FindStore(storeId);
         if (store == null)
@@ -63,12 +68,22 @@ public class StatefulWalletFactory
         catch (Exception ex)
         {
             // Log warning but proceed. Wallet might be used for operations not requiring Lightning (e.g. Swap)
-            _logger.LogWarning("Could not get Lightning Client from store {StoreId}. Reason: {Reason}", storeId, ex.Message);
+            _logger.LogWarning(
+                "Could not get Lightning Client from store {StoreId}. Reason: {Reason}",
+                storeId,
+                ex.Message
+            );
         }
 
         if (lightningClient != null)
         {
-            return new StatefulWallet(lightningClient, mintUrl, unit, _cashuDbContextFactory, storeId);
+            return new StatefulWallet(
+                lightningClient,
+                mintUrl,
+                unit,
+                _cashuDbContextFactory,
+                storeId
+            );
         }
 
         return new StatefulWallet(mintUrl, unit, _cashuDbContextFactory, storeId);
@@ -80,7 +95,8 @@ public class StatefulWalletFactory
 
         var lightningConfig = store.GetPaymentMethodConfig<LightningPaymentMethodConfig>(
             lightningPmi,
-            _handlers);
+            _handlers
+        );
 
         if (lightningConfig == null)
         {
@@ -90,6 +106,7 @@ public class StatefulWalletFactory
         return lightningConfig.CreateLightningClient(
             network,
             _lightningNetworkOptions.Value,
-            _lightningClientFactoryService);
+            _lightningClientFactoryService
+        );
     }
 }

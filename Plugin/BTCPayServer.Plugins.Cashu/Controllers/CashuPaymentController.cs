@@ -53,7 +53,14 @@ public class CashuPaymentController : Controller
             return BadRequest(ex.Message);
         }
 
-        return Redirect(Url.ActionAbsolute(this.Request, nameof(UIInvoiceController.Checkout), "UIInvoice", new { invoiceId = invoiceId }).AbsoluteUri);
+        return Redirect(
+            Url.ActionAbsolute(
+                this.Request,
+                nameof(UIInvoiceController.Checkout),
+                "UIInvoice",
+                new { invoiceId = invoiceId }
+            ).AbsoluteUri
+        );
     }
 
     /// <summary>
@@ -70,8 +77,16 @@ public class CashuPaymentController : Controller
         {
             // FIXME: idk why but i couldn't make it work with [FromBody].
             var body = await new StreamReader(Request.Body).ReadToEndAsync();
-            var payload = JsonSerializer.Deserialize<PaymentRequestPayload>(body, JsonSerializerOptions.Default);
-            if (payload.PaymentId == null || payload.Mint == null || payload.Unit == null || payload.Proofs == null)
+            var payload = JsonSerializer.Deserialize<PaymentRequestPayload>(
+                body,
+                JsonSerializerOptions.Default
+            );
+            if (
+                payload.PaymentId == null
+                || payload.Mint == null
+                || payload.Unit == null
+                || payload.Proofs == null
+            )
             {
                 throw new ArgumentException("Required fields are missing in the payload.");
             }
@@ -80,14 +95,10 @@ public class CashuPaymentController : Controller
             {
                 Tokens =
                 [
-                    new CashuToken.Token
-                    {
-                        Mint = payload.Mint,
-                        Proofs = payload.Proofs.ToList()
-                    }
+                    new CashuToken.Token { Mint = payload.Mint, Proofs = payload.Proofs.ToList() },
                 ],
                 Memo = payload.Memo,
-                Unit = payload.Unit
+                Unit = payload.Unit,
             };
 
             await _cashuPaymentService.ProcessPaymentAsync(token, payload.PaymentId);
@@ -102,7 +113,7 @@ public class CashuPaymentController : Controller
             return BadRequest(ex.Message);
         }
     }
-    
+
     // this method is useless
     // check for `GetInvoicePaymentMethods` in `GreenfieldInvoiceController`
     // if you look `ToPaymentMethodModels`, you can see that you can add fields in the `AdditionalData` field

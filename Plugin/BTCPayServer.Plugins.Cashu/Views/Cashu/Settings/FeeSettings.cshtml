@@ -1,5 +1,8 @@
+@using Amazon.Runtime.Internal.Endpoints.StandardLibrary
+@using BTCPayServer
 @using BTCPayServer.Abstractions.Extensions
 @using BTCPayServer.Plugins.Cashu
+@using BTCPayServer.Plugins.Cashu.Controllers
 @model BTCPayServer.Plugins.Cashu.ViewModels.CashuSettingsViewModel
 @{
     ViewData.SetActivePage(CashuPlugin.PluginNavKey, "Cashu Settings", "Configuration");
@@ -27,7 +30,7 @@
                     <input type="number" asp-for="MaxKeysetFee" class="form-control"/>
                 </div>
             </div>
-            <a class="btn btn-outline-info" href="cashu/FailedTransactions">Show interrupted transactions</a>
+            <a class="btn btn-outline-info" href="@Url.Action("FailedTransactions", "UICashuWallet", new {storeId = Context.GetCurrentStoreId()})">Show interrupted transactions</a>
         </div>
     </div>
 </form>

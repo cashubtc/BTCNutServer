@@ -6,5 +6,5 @@ public enum ProofState
     Exported,
     Spent,
     Pending,
-    Reserved
+    Reserved,
 }

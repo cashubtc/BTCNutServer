@@ -16,9 +16,9 @@ public class StoredProof : Proof
     public Guid? ExportedTokenId { get; set; }
 
     // EF requires empty constructor
-    private StoredProof() {} 
+    private StoredProof() { }
 
-    public StoredProof(Proof proof, string storeId, ProofState status) 
+    public StoredProof(Proof proof, string storeId, ProofState status)
     {
         this.Id = proof.Id;
         this.Amount = proof.Amount;
@@ -29,7 +29,7 @@ public class StoredProof : Proof
         this.StoreId = storeId;
         this.Status = status;
     }
-    
+
     public Proof ToDotNutProof()
     {
         return new Proof
@@ -39,12 +39,16 @@ public class StoredProof : Proof
             Secret = this.Secret,
             C = this.C,
             DLEQ = this.DLEQ,
-            Witness = this.Witness
+            Witness = this.Witness,
         };
     }
-    public static IEnumerable<StoredProof> FromBatch(IEnumerable<Proof> proofs, string storeId, ProofState status)
+
+    public static IEnumerable<StoredProof> FromBatch(
+        IEnumerable<Proof> proofs,
+        string storeId,
+        ProofState status
+    )
     {
-        return proofs.Select(p=>new StoredProof(p, storeId, status));
+        return proofs.Select(p => new StoredProof(p, storeId, status));
     }
-    
 }

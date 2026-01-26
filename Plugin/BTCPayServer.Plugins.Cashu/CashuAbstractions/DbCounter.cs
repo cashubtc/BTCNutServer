@@ -24,13 +24,19 @@ public class DbCounter : ICounter
     public async Task<uint> GetCounterForId(KeysetId keysetId, CancellationToken ct = default)
     {
         await using var db = _dbContextFactory.CreateContext();
-        var entry = await db.StoreKeysetCounters
-            .FirstOrDefaultAsync(c => c.StoreId == _storeId && c.KeysetId == keysetId, ct);
+        var entry = await db.StoreKeysetCounters.FirstOrDefaultAsync(
+            c => c.StoreId == _storeId && c.KeysetId == keysetId,
+            ct
+        );
 
         return entry?.Counter ?? 0;
     }
 
-    public async Task<uint> IncrementCounter(KeysetId keysetId, uint bumpBy = 1, CancellationToken ct = default)
+    public async Task<uint> IncrementCounter(
+        KeysetId keysetId,
+        uint bumpBy = 1,
+        CancellationToken ct = default
+    )
     {
         await using var db = _dbContextFactory.CreateContext();
         var strategy = db.Database.CreateExecutionStrategy();
@@ -40,8 +46,10 @@ public class DbCounter : ICounter
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
             try
             {
-                var entry = await db.StoreKeysetCounters
-                    .FirstOrDefaultAsync(c => c.StoreId == _storeId && c.KeysetId == keysetId, ct);
+                var entry = await db.StoreKeysetCounters.FirstOrDefaultAsync(
+                    c => c.StoreId == _storeId && c.KeysetId == keysetId,
+                    ct
+                );
 
                 uint newValue;
                 if (entry == null)
@@ -51,7 +59,7 @@ public class DbCounter : ICounter
                     {
                         StoreId = _storeId,
                         KeysetId = keysetId,
-                        Counter = newValue
+                        Counter = newValue,
                     };
                     db.StoreKeysetCounters.Add(entry);
                 }
@@ -76,17 +84,21 @@ public class DbCounter : ICounter
     public async Task SetCounter(KeysetId keysetId, uint counter, CancellationToken ct = default)
     {
         await using var db = _dbContextFactory.CreateContext();
-        var entry = await db.StoreKeysetCounters
-            .FirstOrDefaultAsync(c => c.StoreId == _storeId && c.KeysetId == keysetId, ct);
+        var entry = await db.StoreKeysetCounters.FirstOrDefaultAsync(
+            c => c.StoreId == _storeId && c.KeysetId == keysetId,
+            ct
+        );
 
         if (entry == null)
         {
-            db.StoreKeysetCounters.Add(new StoreKeysetCounter
-            {
-                StoreId = _storeId,
-                KeysetId = keysetId,
-                Counter = counter
-            });
+            db.StoreKeysetCounters.Add(
+                new StoreKeysetCounter
+                {
+                    StoreId = _storeId,
+                    KeysetId = keysetId,
+                    Counter = counter,
+                }
+            );
         }
         else
         {
@@ -99,9 +111,7 @@ public class DbCounter : ICounter
     public async Task<IReadOnlyDictionary<KeysetId, uint>> Export()
     {
         await using var db = _dbContextFactory.CreateContext();
-        var counters = await db.StoreKeysetCounters
-            .Where(c => c.StoreId == _storeId)
-            .ToListAsync();
+        var counters = await db.StoreKeysetCounters.Where(c => c.StoreId == _storeId).ToListAsync();
 
         return counters.ToDictionary(c => c.KeysetId, c => c.Counter);
     }

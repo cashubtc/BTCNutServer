@@ -12,13 +12,13 @@
 // {
 //     private readonly IHttpClientFactory _httpClientFactory;
 //     private readonly ILoggerFactory _loggerFactory;
-//     
+//
 //     public CashuLightningConnectionStringHandler(IHttpClientFactory httpClientFactory, ILoggerFactory loggerFactory)
 //     {
 //         _httpClientFactory = httpClientFactory;
 //         _loggerFactory = loggerFactory;
 //     }
-//     
+//
 //     public ILightningClient? Create(string connectionString, Network network, out string? error)
 //     {
 //         var kv = LightningConnectionStringHelper.ExtractValues(connectionString, out var type);
@@ -33,7 +33,7 @@
 //             error = "Mint url expected";
 //             return null;
 //         }
-//         
+//
 //         if (!kv.TryGetValue("store-id", out var storeId))
 //         {
 //             error = "Store Id expected";
@@ -41,7 +41,7 @@
 //         }
 //
 //         Uri uri = new Uri(url);
-//         
+//
 //         bool allowInsecure = false;
 //         if (kv.TryGetValue("allowinsecure", out var allowinsecureStr))
 //         {
@@ -62,14 +62,14 @@
 //         }
 //
 //         error = null;
-//         
+//
 //
 //         kv.TryGetValue("wallet-id", out var walletId);
 //         var cashuLnClient = new CashuLightningClient(uri, storeId, _loggerFactory.CreateLogger(nameof(CashuLightningClient));
-//         
+//
 //         try
 //         {
-//             
+//
 //         }
 //         catch
 //         {
