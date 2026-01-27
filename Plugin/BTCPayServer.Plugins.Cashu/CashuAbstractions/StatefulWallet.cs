@@ -544,14 +544,14 @@ public class MeltResult
     public bool Success => Error == null && Quote != null;
     public PostMeltQuoteBolt11Response? Quote { get; set; }
     public Proof[]? ChangeProofs { get; set; }
-    public required CashuUtils.OutputData BlankOutputs { get; set; }
+    public required List<OutputData> BlankOutputs { get; set; }
     public Exception? Error { get; set; }
 }
 
 public class SwapResult
 {
     public bool Success => Error == null && ResultProofs != null;
-    public required CashuUtils.OutputData ProvidedOutputs { get; set; }
+    public required List<OutputData> ProvidedOutputs { get; set; }
     public Proof[]? ResultProofs { get; set; }
     public Exception? Error { get; set; }
 }

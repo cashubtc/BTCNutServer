@@ -9,7 +9,6 @@ using BTCPayServer.Plugins.Cashu.PaymentHandlers;
 using DotNut;
 using DotNut.Api;
 using DotNut.ApiModels;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NBitcoin;
 using Utils = DotNut.Abstractions.Utils;
 
@@ -156,57 +155,6 @@ public static class CashuUtils
     }
 
     /// <summary>
-    /// Create Proofs from BlindSignature array
-    /// </summary>
-    /// <param name="promises">Blind Signatures</param>
-    /// <param name="rs">Blinding Factors</param>
-    /// <param name="secrets">yeah, secrets</param>
-    /// <param name="keyset"></param>
-    /// <returns>Proofs Constructed with params.</returns>
-    public static Proof[] CreateProofs(
-        BlindSignature[] promises,
-        PrivKey[] rs,
-        DotNut.ISecret[] secrets,
-        Keyset keyset
-    )
-    {
-        var keysetId = promises.Select(p => p.Id).Distinct().ToList();
-        //we should create that many proofs as there are signatures. when returning the fee, mint will return signatures for outputs
-        if (keysetId.Count != 1)
-        {
-            throw new CashuPluginException(
-                "Error while creating proofs. All promises should be the same keyset!"
-            );
-        }
-
-        if (!keyset.GetKeysetId().Equals(keysetId.Single()))
-        {
-            throw new CashuPluginException(
-                "Error while creating proofs. Id derived from keyset different from promises!"
-            );
-        }
-
-        var proofs = new List<Proof>();
-        for (int i = 0; i < promises.Length; i++)
-        {
-            var p = promises[i];
-            var r = rs[i];
-            var secret = secrets[i];
-
-            if (!keyset.TryGetValue(Convert.ToUInt64(p.Amount), out var A))
-            {
-                throw new CashuPluginException(
-                    $"Provided keyset doesn't contain PubKey for amount {p.Amount}"
-                );
-            }
-
-            proofs.Add(DotNut.Abstractions.Utils.ConstructProofFromPromise(p, r, secret, A));
-        }
-
-        return proofs.ToArray();
-    }
-
-    /// <summary>
     /// Helper function creating NUT-18 payment request
     /// </summary>
     /// <param name="amount">Amount</param>
@@ -350,49 +298,6 @@ public static class CashuUtils
         public string Unit { get; set; }
 
         public ulong SumProofs => Proofs?.Select(p => p.Amount).Sum() ?? 0;
-    }
-
-    public class OutputData
-    {
-        public BlindedMessage[] BlindedMessages { get; set; }
-        public DotNut.ISecret[] Secrets { get; set; }
-        public PrivKey[] BlindingFactors { get; set; }
-
-        public static implicit operator List<DotNut.Abstractions.OutputData>(OutputData outputData)
-        {
-            return outputData
-                .BlindedMessages.Select(
-                    (t, i) =>
-                        new DotNut.Abstractions.OutputData
-                        {
-                            BlindedMessage = t,
-                            BlindingFactor = outputData.BlindingFactors[i],
-                            Secret = outputData.Secrets[i],
-                        }
-                )
-                .ToList();
-        }
-
-        public static implicit operator OutputData(List<DotNut.Abstractions.OutputData> outputData)
-        {
-            var secrets = new List<DotNut.ISecret>();
-            var bms = new List<BlindedMessage>();
-            var bfs = new List<PrivKey>();
-
-            foreach (var od in outputData)
-            {
-                secrets.Add(od.Secret);
-                bms.Add(od.BlindedMessage);
-                bfs.Add(od.BlindingFactor);
-            }
-
-            return new OutputData()
-            {
-                BlindedMessages = bms.ToArray(),
-                BlindingFactors = bfs.ToArray(),
-                Secrets = secrets.ToArray(),
-            };
-        }
     }
 
     public static bool TryDecodeToken(string token, out CashuToken? cashuToken)

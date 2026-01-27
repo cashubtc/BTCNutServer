@@ -1,10 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Text.Json;
-using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using DotNut;
+using DotNut.Abstractions;
 
 namespace BTCPayServer.Plugins.Cashu.Data.Models;
 
@@ -39,7 +40,7 @@ public class FailedTransaction
     public required OperationType OperationType { get; set; }
 
     // For melt operation these will be for fee return. For swap these will contain outputs sent to mint.
-    public required CashuUtils.OutputData OutputData { get; set; }
+    public required List<OutputData> OutputData { get; set; }
     public MeltDetails? MeltDetails { get; set; }
     public required int RetryCount { get; set; }
     public required DateTimeOffset LastRetried { get; set; }

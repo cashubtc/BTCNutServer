@@ -767,10 +767,9 @@ public class CashuPaymentService
                         return new PollResult() { State = CashuPaymentState.Success };
                     }
                     var keys = await wallet.GetKeys(firstChange.Id);
-                    var proofs = CashuUtils.CreateProofs(
-                        meltQuoteState.Change,
-                        ftx.OutputData.BlindingFactors,
-                        ftx.OutputData.Secrets,
+                    var proofs = DotNut.Abstractions.Utils.ConstructProofsFromPromises(
+                        meltQuoteState.Change.ToList(),
+                        ftx.OutputData,
                         keys
                     );
                     return new PollResult()
@@ -814,7 +813,7 @@ public class CashuPaymentService
         var wallet = await _statefulWalletFactory.CreateAsync(ftx.StoreId, ftx.MintUrl, ftx.Unit);
         try
         {
-            // Check if token is spent - if not, swap failed
+            // Check if token is spent - if not, swap failed for 100%
             var tokenState = await wallet.CheckTokenState(ftx.InputProofs.ToList());
             if (tokenState == StateResponseItem.TokenState.UNSPENT)
             {
@@ -823,22 +822,21 @@ public class CashuPaymentService
 
             //try to restore proofs
             var response = await wallet.RestoreProofsFromInputs(
-                ftx.OutputData.BlindedMessages.ToArray(),
+                ftx.OutputData.Select(o => o.BlindedMessage).ToArray(),
                 cts
             );
-            if (response.Signatures.Length == ftx.OutputData.BlindedMessages.Length)
+            if (response.Signatures.Length == ftx.OutputData.Count)
             {
                 var firstSignature = response.Signatures.FirstOrDefault();
                 if (firstSignature == null)
                 {
-                    return new PollResult() { State = CashuPaymentState.Failed };
+                    return new PollResult { State = CashuPaymentState.Failed };
                 }
                 var keysetId = firstSignature.Id;
                 var keys = await wallet.GetKeys(keysetId);
-                var proofs = CashuUtils.CreateProofs(
-                    response.Signatures,
-                    ftx.OutputData.BlindingFactors,
-                    ftx.OutputData.Secrets,
+                var proofs = DotNut.Abstractions.Utils.ConstructProofsFromPromises(
+                    response.Signatures.ToList(),
+                    ftx.OutputData,
                     keys
                 );
                 return new PollResult()
@@ -864,7 +862,7 @@ public class CashuPaymentService
     {
         public bool Success => State == CashuPaymentState.Success;
         public CashuPaymentState State { get; set; }
-        public Proof[]? ResultProofs { get; set; }
+        public List<Proof>? ResultProofs { get; set; }
         public Exception? Error { get; set; }
     }
 }
