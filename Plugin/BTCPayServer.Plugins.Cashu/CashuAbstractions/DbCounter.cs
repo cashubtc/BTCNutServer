@@ -81,6 +81,58 @@ public class DbCounter : ICounter
         });
     }
 
+    public async Task<(uint oldValue, uint newValue)> FetchAndIncrement(
+        KeysetId keysetId,
+        uint bumpBy = 1,
+        CancellationToken ct = default
+    )
+    {
+        await using var db = _dbContextFactory.CreateContext();
+        var strategy = db.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            try
+            {
+                var entry = await db.StoreKeysetCounters
+                    .FirstOrDefaultAsync(c => c.StoreId == _storeId && c.KeysetId == keysetId, ct);
+
+                uint oldValue, newValue;
+
+                if (entry == null)
+                {
+                    oldValue = 0;
+                    newValue = bumpBy;
+                    entry = new StoreKeysetCounter
+                    {
+                        StoreId = _storeId,
+                        KeysetId = keysetId,
+                        Counter = newValue
+                    };
+                    db.StoreKeysetCounters.Add(entry);
+                }
+                else
+                {
+                    oldValue = entry.Counter;
+                    entry.Counter += bumpBy;
+                    newValue = entry.Counter;
+                }
+
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+
+                return (oldValue, newValue);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(ct);
+                throw;
+            }
+        });
+    }
+
+
     public async Task SetCounter(KeysetId keysetId, uint counter, CancellationToken ct = default)
     {
         await using var db = _dbContextFactory.CreateContext();

@@ -17,6 +17,7 @@ using DotNut.Abstractions;
 using DotNut.ApiModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
@@ -494,4 +495,96 @@ public class UICashuWalletController : Controller
             return NotFound("Failed to fetch mint info");
         }
     }
+
+    [HttpGet("{storeId}/cashu/check-token-states")]
+    public async Task<IActionResult> CheckAllTokenStates(string storeId)
+    {
+        await using var db = _cashuDbContextFactory.CreateContext();
+
+        var unspentTokens = await db
+            .ExportedTokens.Include(t => t.Proofs)
+            .Where(t => t.StoreId == StoreData.Id && !t.IsUsed)
+            .ToListAsync();
+
+        if (unspentTokens.Count == 0)
+        {
+            return RedirectToAction(nameof(CashuWallet), new { storeId });
+        }
+
+        // group by mint+unit, check all tokens for each group in parallel
+        var checkTasks = unspentTokens
+            .GroupBy(t => (t.Mint, t.Unit))
+            .Select(async group =>
+            {
+                var (mint, unit) = group.Key;
+                var tokens = group.ToList();
+
+                try
+                {
+                    var wallet = new StatefulWallet(mint, unit);
+                    var spentTokens = new List<ExportedToken>();
+
+                    foreach (var token in tokens.Where(t => t.Proofs is { Count: > 0 }))
+                    {
+                        var state = await wallet.CheckTokenState(token.Proofs);
+                        if (state == StateResponseItem.TokenState.SPENT)
+                        {
+                            spentTokens.Add(token);
+                        }
+                    }
+
+                    return (Mint: mint, SpentTokens: spentTokens, Error: (Exception?)null);
+                }
+                catch (Exception ex)
+                {
+                    return (Mint: mint, SpentTokens: new List<ExportedToken>(), Error: ex);
+                }
+            });
+
+        var results = await Task.WhenAll(checkTasks);
+
+        var tokensToMarkAsSpent = new List<ExportedToken>();
+        var failedMints = new List<string>();
+
+        foreach (var (mint, spentTokens, error) in results)
+        {
+            if (error != null)
+            {
+                _logger.LogWarning(
+                    "Failed to check token states for mint {Mint}: {Message}",
+                    mint,
+                    error.Message
+                );
+                failedMints.Add(mint);
+                continue;
+            }
+
+            tokensToMarkAsSpent.AddRange(spentTokens);
+        }
+
+        if (tokensToMarkAsSpent.Count > 0)
+        {
+            foreach (var token in tokensToMarkAsSpent)
+            {
+                token.IsUsed = true;
+                foreach (var proof in token.Proofs)
+                {
+                    proof.Status = ProofState.Spent;
+                }
+            }
+
+            await db.SaveChangesAsync();
+            TempData[WellKnownTempData.SuccessMessage] =
+                $"Marked {tokensToMarkAsSpent.Count} token(s) as spent.";
+        }
+
+        if (failedMints.Count > 0)
+        {
+            TempData[WellKnownTempData.ErrorMessage] =
+                $"Couldn't reach {failedMints.Count} mint(s): {string.Join(", ", failedMints)}";
+        }
+
+        return RedirectToAction(nameof(CashuWallet), new { storeId });
+    }
+
 }
