@@ -24,7 +24,7 @@ namespace BTCPayServer.Plugins.Cashu.Services;
 public class RestoreService : IHostedService
 {
     private readonly ILogger<RestoreService> _logger;
-    private readonly SemaphoreSlim _semaphore = new(1, 1);
+    private readonly SemaphoreSlim _mintSemaphore = new(5);
     private readonly ConcurrentDictionary<string, RestoreStatus> _restoreStatuses = new();
     private readonly ConcurrentQueue<RestoreJob> _restoreQueue = new();
     private readonly CashuDbContextFactory _dbContextFactory;
@@ -58,7 +58,7 @@ public class RestoreService : IHostedService
             await Task.WhenAny(_processingTask, Task.Delay(Timeout.Infinite, cancellationToken));
         }
 
-        _semaphore.Dispose();
+        _mintSemaphore.Dispose();
     }
 
     /// <summary>
@@ -152,76 +152,102 @@ public class RestoreService : IHostedService
         status.StartedAt = DateTime.UtcNow;
 
         _logger.LogInformation(
-            $"[Cashu] Starting wallet restore job {job.JobId} for store {job.StoreId}"
+            "[Cashu] Starting wallet restore job {JobId} for store {StoreId} ({MintCount} mints, max 5 concurrent)",
+            job.JobId,
+            job.StoreId,
+            job.MintUrls.Count
         );
 
         try
         {
-            foreach (var mintUrl in job.MintUrls)
+            var restoreTasks = job.MintUrls.Select(async mintUrl =>
             {
                 if (cancellationToken.IsCancellationRequested)
-                {
-                    status.Status = RestoreState.Cancelled;
                     return;
+
+                await _mintSemaphore.WaitAsync(cancellationToken);
+
+                lock (status)
+                {
+                    status.CurrentMints.Add(mintUrl);
+                    status.CurrentMint = mintUrl; // backwards compat
                 }
 
-                status.CurrentMint = mintUrl;
                 try
                 {
-                    await _semaphore.WaitAsync(cancellationToken);
+                    _logger.LogInformation(
+                        "[Cashu] Restoring from mint {MintUrl} for store {StoreId}",
+                        mintUrl,
+                        job.StoreId
+                    );
 
-                    try
+                    var restoredMint = await RestoreFromMintAsync(
+                        job.StoreId,
+                        mintUrl,
+                        job.Seed,
+                        cancellationToken
+                    );
+
+                    if (restoredMint.Proofs.Count != 0)
                     {
-                        _logger.LogInformation(
-                            $"Restoring from mint {mintUrl} for store {job.StoreId}"
-                        );
-
-                        var restoredMint = await RestoreFromMintAsync(
+                        await SaveRecoveredTokensAsync(
                             job.StoreId,
                             mintUrl,
-                            job.Seed,
+                            restoredMint.Proofs,
                             cancellationToken
                         );
-                        if (restoredMint.Proofs.Count != 0)
-                        {
-                            await SaveRecoveredTokensAsync(
-                                job.StoreId,
-                                mintUrl,
-                                restoredMint.Proofs,
-                                cancellationToken
-                            );
-                        }
-                        status.RestoredMints.Add(restoredMint);
-                        status.ProcessedMints++;
-                        _logger.LogInformation(
-                            $"Recovered {restoredMint.Proofs.Count} proofs from {mintUrl}"
-                        );
-                    }
-                    finally
-                    {
-                        _semaphore.Release();
                     }
 
-                    await Task.Delay(2000, cancellationToken);
+                    lock (status)
+                    {
+                        status.RestoredMints.Add(restoredMint);
+                        status.ProcessedMints++;
+                    }
+
+                    _logger.LogInformation(
+                        "[Cashu] Recovered {ProofCount} proofs from {MintUrl}",
+                        restoredMint.Proofs.Count,
+                        mintUrl
+                    );
                 }
                 catch (Exception ex)
                 {
                     var error = $"Error restoring from {mintUrl}: {ex.Message}";
-                    status.UnreachableMints.Add(mintUrl);
-                    status.Errors.Add(error);
-                    _logger.LogError(ex, error);
+                    lock (status)
+                    {
+                        status.UnreachableMints.Add(mintUrl);
+                        status.Errors.Add(error);
+                    }
+                    _logger.LogError(ex, "[Cashu] {Error}", error);
                 }
+                finally
+                {
+                    lock (status)
+                    {
+                        status.CurrentMints.Remove(mintUrl);
+                    }
+                    _mintSemaphore.Release();
+                }
+            });
+
+            await Task.WhenAll(restoreTasks);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                status.Status = RestoreState.Cancelled;
+                return;
             }
 
-            status.Status = status.Errors.Any()
+            status.Status = status.Errors.Count > 0
                 ? RestoreState.CompletedWithErrors
                 : RestoreState.Completed;
             status.CompletedAt = DateTime.UtcNow;
             await SaveWalletConfig(job.StoreId, new Mnemonic(job.Seed), cancellationToken);
 
             _logger.LogInformation(
-                $"Restore job {job.JobId} completed."
-                    + (status.Errors.Any() ? $"with {status.Errors.Count} errors" : "")
+                "[Cashu] Restore job {JobId} completed{ErrorInfo}",
+                job.JobId,
+                status.Errors.Count > 0 ? $" with {status.Errors.Count} errors" : ""
             );
         }
         catch (Exception ex)
@@ -230,7 +256,7 @@ public class RestoreService : IHostedService
             status.Errors.Add($"Fatal error: {ex.Message}");
             status.CompletedAt = DateTime.UtcNow;
 
-            _logger.LogError(ex, $"Restore job {job.JobId} failed");
+            _logger.LogError(ex, "[Cashu] Restore job {JobId} failed", job.JobId);
         }
     }
 
@@ -353,6 +379,7 @@ public class RestoreStatus
     public int TotalMints { get; set; }
     public int ProcessedMints { get; set; }
     public string? CurrentMint { get; set; }
+    public HashSet<string> CurrentMints { get; set; } = new();
     public List<string> UnreachableMints { get; set; } = new();
     public List<string> Errors { get; set; } = new();
     public DateTime QueuedAt { get; set; }

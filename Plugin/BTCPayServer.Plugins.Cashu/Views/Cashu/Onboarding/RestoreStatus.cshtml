@@ -73,11 +73,13 @@
         }
         
         .current-mint code {
+            display: block;
             color: var(--btcpay-body-text);
             background: var(--btcpay-body-bg-medium);
-            padding: 0.125rem 0.375rem;
+            padding: 0.25rem 0.5rem;
             border-radius: 4px;
             font-size: 0.8rem;
+            margin-top: 0.375rem;
         }
         
         /* Mint List */
@@ -259,7 +261,17 @@
                 <span class="progress-text">Fetching balances from your mints... (@Model.ProcessedMints/@Model.TotalMints)</span>
             </div>
             
-            @if (!string.IsNullOrEmpty(Model.CurrentMint))
+            @if (Model.CurrentMints?.Count > 0)
+            {
+                <div class="current-mint">
+                    Processing:
+                    @foreach (var mint in Model.CurrentMints)
+                    {
+                        <code>@mint</code>
+                    }
+                </div>
+            }
+            else if (!string.IsNullOrEmpty(Model.CurrentMint))
             {
                 <div class="current-mint">
                     Processing: <code>@Model.CurrentMint</code>
