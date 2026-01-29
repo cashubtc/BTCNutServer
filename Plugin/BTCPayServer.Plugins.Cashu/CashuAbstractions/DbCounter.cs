@@ -1,9 +1,11 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.Models;
+using Dapper;
 using DotNut;
 using DotNut.Abstractions;
 using Microsoft.EntityFrameworkCore;
@@ -14,7 +16,6 @@ public class DbCounter : ICounter
 {
     private readonly CashuDbContextFactory _dbContextFactory;
     private readonly string _storeId;
-
     public DbCounter(CashuDbContextFactory dbContextFactory, string storeId)
     {
         _dbContextFactory = dbContextFactory;
@@ -32,54 +33,33 @@ public class DbCounter : ICounter
         return entry?.Counter ?? 0;
     }
 
-    public async Task<uint> IncrementCounter(
-        KeysetId keysetId,
-        uint bumpBy = 1,
-        CancellationToken ct = default
-    )
+    public async Task<uint> IncrementCounter(KeysetId keysetId, uint bumpBy = 1, CancellationToken ct = default)
     {
         await using var db = _dbContextFactory.CreateContext();
-        var strategy = db.Database.CreateExecutionStrategy();
-
-        return await strategy.ExecuteAsync(async () =>
-        {
-            await using var transaction = await db.Database.BeginTransactionAsync(ct);
-            try
-            {
-                var entry = await db.StoreKeysetCounters.FirstOrDefaultAsync(
-                    c => c.StoreId == _storeId && c.KeysetId == keysetId,
-                    ct
-                );
-
-                uint newValue;
-                if (entry == null)
-                {
-                    newValue = bumpBy;
-                    entry = new StoreKeysetCounter
-                    {
-                        StoreId = _storeId,
-                        KeysetId = keysetId,
-                        Counter = newValue,
-                    };
-                    db.StoreKeysetCounters.Add(entry);
-                }
-                else
-                {
-                    entry.Counter += bumpBy;
-                    newValue = entry.Counter;
-                }
-
-                await db.SaveChangesAsync(ct);
-                await transaction.CommitAsync(ct);
-                return newValue;
-            }
-            catch
-            {
-                await transaction.RollbackAsync(ct);
-                throw;
-            }
+        var conn = db.Database.GetDbConnection();
+        
+        var entityType = db.Model.FindEntityType(typeof(StoreKeysetCounter)) 
+                         ?? throw new ArgumentNullException(nameof(StoreKeysetCounter), "Can't find StoreKeysetCounter table!");
+        var schema = entityType.GetSchema();
+        var tableName = entityType.GetTableName();
+        
+        string sql = $"""
+                          INSERT INTO "{schema}"."{tableName}" ("StoreId", "KeysetId", "Counter")
+                          VALUES (@storeId, @keysetId, @bumpBy)
+                          ON CONFLICT ("StoreId", "KeysetId")
+                          DO UPDATE SET "Counter" = "{tableName}"."Counter" + @bumpBy
+                          RETURNING "Counter";
+                      """;
+        
+        var result = await conn.QuerySingleAsync<long>(sql, new {
+            storeId = _storeId,
+            keysetId = keysetId.ToString(),
+            bumpBy = (long)bumpBy
         });
+
+        return (uint)result;
     }
+
 
     public async Task<(uint oldValue, uint newValue)> FetchAndIncrement(
         KeysetId keysetId,
@@ -88,76 +68,53 @@ public class DbCounter : ICounter
     )
     {
         await using var db = _dbContextFactory.CreateContext();
-        var strategy = db.Database.CreateExecutionStrategy();
+        var conn = db.Database.GetDbConnection();
+        
+        var entityType = db.Model.FindEntityType(typeof(StoreKeysetCounter)) 
+                         ?? throw new ArgumentNullException(nameof(StoreKeysetCounter), "Can't find StoreKeysetCounter table!");
+        var schema = entityType.GetSchema();
+        var tableName = entityType.GetTableName();
 
-        return await strategy.ExecuteAsync(async () =>
-        {
-            await using var transaction = await db.Database.BeginTransactionAsync(ct);
-            try
-            {
-                var entry = await db.StoreKeysetCounters
-                    .FirstOrDefaultAsync(c => c.StoreId == _storeId && c.KeysetId == keysetId, ct);
+        string sql = $"""
+                          INSERT INTO "{schema}"."{tableName}" ("StoreId", "KeysetId", "Counter")
+                          VALUES (@storeId, @keysetId, @bumpBy)
+                          ON CONFLICT ("StoreId", "KeysetId")
+                          DO UPDATE SET "Counter" = "{tableName}"."Counter" + @bumpBy
+                          RETURNING ("Counter" - @bumpBy) AS "OldValue", "Counter" AS "NewValue";
+                      """;
 
-                uint oldValue, newValue;
-
-                if (entry == null)
-                {
-                    oldValue = 0;
-                    newValue = bumpBy;
-                    entry = new StoreKeysetCounter
-                    {
-                        StoreId = _storeId,
-                        KeysetId = keysetId,
-                        Counter = newValue
-                    };
-                    db.StoreKeysetCounters.Add(entry);
-                }
-                else
-                {
-                    oldValue = entry.Counter;
-                    entry.Counter += bumpBy;
-                    newValue = entry.Counter;
-                }
-
-                await db.SaveChangesAsync(ct);
-                await transaction.CommitAsync(ct);
-
-                return (oldValue, newValue);
-            }
-            catch
-            {
-                await transaction.RollbackAsync(ct);
-                throw;
-            }
+        var result = await conn.QuerySingleAsync<dynamic>(sql, new {
+            storeId = _storeId,
+            keysetId = keysetId.ToString(),
+            bumpBy = (long)bumpBy
         });
+
+        return ((uint)(long)result.OldValue, (uint)(long)result.NewValue);
     }
 
 
     public async Task SetCounter(KeysetId keysetId, uint counter, CancellationToken ct = default)
     {
         await using var db = _dbContextFactory.CreateContext();
-        var entry = await db.StoreKeysetCounters.FirstOrDefaultAsync(
-            c => c.StoreId == _storeId && c.KeysetId == keysetId,
-            ct
-        );
+        var conn = db.Database.GetDbConnection();
+        
+        var entityType = db.Model.FindEntityType(typeof(StoreKeysetCounter)) 
+                         ?? throw new ArgumentNullException(nameof(StoreKeysetCounter), "Can't find StoreKeysetCounter table!");
+        var schema = entityType.GetSchema();
+        var tableName = entityType.GetTableName();
 
-        if (entry == null)
-        {
-            db.StoreKeysetCounters.Add(
-                new StoreKeysetCounter
-                {
-                    StoreId = _storeId,
-                    KeysetId = keysetId,
-                    Counter = counter,
-                }
-            );
-        }
-        else
-        {
-            entry.Counter = counter;
-        }
+        string sql = $"""
+                          INSERT INTO "{schema}"."{tableName}" ("StoreId", "KeysetId", "Counter")
+                          VALUES (@storeId, @keysetId, @counter)
+                          ON CONFLICT ("StoreId", "KeysetId")
+                          DO UPDATE SET "Counter" = @counter;
+                      """;
 
-        await db.SaveChangesAsync(ct);
+        await conn.ExecuteAsync(sql, new {
+            storeId = _storeId,
+            keysetId = keysetId.ToString(),
+            counter = (long)counter
+        });
     }
 
     public async Task<IReadOnlyDictionary<KeysetId, uint>> Export()
