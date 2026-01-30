@@ -9,7 +9,7 @@ public record ExportedToken
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-    public Guid Id { get; set; }
+    public Guid Id { get; set; } = new();
     public string SerializedToken { get; set; }
     public ulong Amount { get; set; }
     public string Unit { get; set; }

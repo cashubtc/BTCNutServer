@@ -216,10 +216,8 @@ public class UICashuWalletController : Controller
             Proofs = selectedProofs,
         };
 
-        IActionResult result = RedirectToAction(
-            "ExportedToken",
-            new { tokenId = exportedTokenEntity.Id, storeId = StoreData.Id }
-        );
+        IActionResult result = RedirectToAction(nameof(CashuWallet), new { storeId = StoreData.Id });
+        
         var strategy = db.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
@@ -229,11 +227,18 @@ public class UICashuWalletController : Controller
                 db.ExportedTokens.Add(exportedTokenEntity);
                 await db.SaveChangesAsync();
                 await transaction.CommitAsync();
+                
+                result = RedirectToAction(
+                    nameof(ExportedToken),
+                    new { tokenId = exportedTokenEntity.Id, storeId = StoreData.Id }
+                );
+
             }
             catch
             {
                 await transaction.RollbackAsync();
                 TempData[WellKnownTempData.ErrorMessage] = "Couldn't export token";
+                // todo check this shi out 
                 result = RedirectToAction(nameof(CashuWallet), new { storeId = StoreData.Id });
             }
         });
@@ -511,7 +516,7 @@ public class UICashuWalletController : Controller
             return RedirectToAction(nameof(CashuWallet), new { storeId });
         }
 
-        // group by mint+unit, check all tokens for each group in parallel
+        // g roup by mint+unit, check all tokens for each group in parallel
         var checkTasks = unspentTokens
             .GroupBy(t => (t.Mint, t.Unit))
             .Select(async group =>
