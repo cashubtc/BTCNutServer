@@ -168,8 +168,8 @@ public class UICashuOnboardingController : Controller
                 CryptoCode = "CASHU",
                 IsStored = true,
                 Mnemonic = existingMnemonic.WalletMnemonic.ToString(),
-                RequireConfirm = true,
-                ReturnUrl = Url.Action("ConfirmMnemonic", new { storeId = StoreData.Id }),
+                RequireConfirm = false,
+                ReturnUrl = Url.Action("CashuWallet","UICashuWallet", new { storeId = StoreData.Id }),
             };
             return View("Views/Cashu/Onboarding/CreateMnemonic.cshtml", existingModel);
         }

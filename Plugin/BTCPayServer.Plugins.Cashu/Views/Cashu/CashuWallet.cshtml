@@ -1,11 +1,13 @@
 @using BTCPayServer
 @using BTCPayServer.Abstractions.Extensions
 @using BTCPayServer.Plugins.Cashu
+@using BTCPayServer.Plugins.Cashu.Controllers
 @using BTCPayServer.Plugins.Cashu.Data.enums
 @model BTCPayServer.Plugins.Cashu.ViewModels.CashuWalletViewModel
 
 @{
     ViewData.SetActivePage(CashuPlugin.PluginNavKey, "Cashu Wallet", "CashuWallet");
+    var storeId = Context.GetCurrentStoreId();
 }
 
 <div class="sticky-header mb-l">
@@ -84,7 +86,7 @@
                                         <span class="h5 mb-0 fw-bold">@item.Amount</span>
                                     </td>
                                     <td class="pe-4 py-3 text-end align-middle">
-                                        <form method="post" asp-controller="UICashuWallet" asp-action="ExportMintBalance" asp-route-storeId="@Context.GetStoreData().Id">
+                                        <form method="post" asp-controller="UICashuWallet" asp-action="ExportMintBalance" asp-route-storeId="@storeId">
                                             <input type="hidden" name="mintUrl" value="@item.Mint" />
                                             <input type="hidden" name="unit" value="@item.Unit" />
                                             <button type="submit" class="btn btn-primary btn-sm px-3" name="action" value="@WalletAction.SendToken">
@@ -105,7 +107,20 @@
     <div class="col-12">
         <div class="card shadow-sm border-0">
             <div class="card-header bg-transparent border-0 pt-4 px-4">
-                <h4 class="mb-0">Token Export History</h4>
+                <div class="d-flex justify-content-between ">
+                    <h4 class="mb-0">Token Export History</h4>
+                    <a asp-controller="UICashuWallet" asp-action="CheckAllTokenStates" asp-route-storeId="@storeId">
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="24" height="24" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round"
+                            class="lucide lucide-rotate-cw-icon lucide-rotate-cw">
+                            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+                            <path d="M21 3v5h-5"/>
+                        </svg>
+                    </a> 
+                </div>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -217,7 +232,7 @@
     }
     
     .bg-warning {
-        background-color: var(--btcpay-cashu-warning-bg) !important;
+        background-color: var(--btcpay-warning-bg-active) !important;
         color: var(--btcpay-warning) !important;
         border: 1px solid var(--btcpay-warning);
     }

@@ -17,7 +17,6 @@ using DotNut.Abstractions;
 using DotNut.ApiModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
@@ -280,30 +279,7 @@ public class UICashuWalletController : Controller
             exportedToken.Proofs.AddRange(newProofs);
             await db.SaveChangesAsync();
         }
-
-        // check state if not already marked as used
-        if (!exportedToken.IsUsed && exportedToken.Proofs.Count > 0)
-        {
-            try
-            {
-                var wallet = new StatefulWallet(exportedToken.Mint, exportedToken.Unit);
-                var state = await wallet.CheckTokenState(exportedToken.Proofs);
-
-                if (state == StateResponseItem.TokenState.SPENT)
-                {
-                    exportedToken.IsUsed = true;
-                    foreach (var proof in exportedToken.Proofs)
-                    {
-                        proof.Status = ProofState.Spent;
-                    }
-                    await db.SaveChangesAsync();
-                }
-            }
-            catch (Exception)
-            {
-                // mint unreachable - will check next time
-            }
-        }
+        
 
         var model = new ExportedTokenViewModel()
         {
@@ -516,7 +492,7 @@ public class UICashuWalletController : Controller
             return RedirectToAction(nameof(CashuWallet), new { storeId });
         }
 
-        // g roup by mint+unit, check all tokens for each group in parallel
+        // group by mint+unit, check all tokens for each group in parallel
         var checkTasks = unspentTokens
             .GroupBy(t => (t.Mint, t.Unit))
             .Select(async group =>
@@ -591,5 +567,8 @@ public class UICashuWalletController : Controller
 
         return RedirectToAction(nameof(CashuWallet), new { storeId });
     }
+
+
+    
 
 }
