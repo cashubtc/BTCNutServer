@@ -113,16 +113,4 @@ public class CashuPaymentController : Controller
             return BadRequest(ex.Message);
         }
     }
-
-    // this method is useless
-    // check for `GetInvoicePaymentMethods` in `GreenfieldInvoiceController`
-    // if you look `ToPaymentMethodModels`, you can see that you can add fields in the `AdditionalData` field
-    // it may already be exposed if you already implemented `ParsePaymentPromptDetails`
-    // `api/v1/stores/{storeId}/invoices/{invoiceId}/payment-methods`
-    // API to fetch payment request for invoice
-    [HttpGet("~/cashu/get-payment-request")]
-    public Task<IActionResult> GetPaymentRequest()
-    {
-        throw new NotImplementedException();
-    }
 }
