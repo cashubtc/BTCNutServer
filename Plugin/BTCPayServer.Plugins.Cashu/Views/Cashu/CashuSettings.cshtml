@@ -90,7 +90,7 @@
                     <h3 class="mb-2">Remove spent ecash</h3>
                     <p class="text-muted mb-4">Check state of Cashu held in your wallet and remove spent proofs.</p>
                     @* todo create action for dat *@
-                    <a class="btn btn-secondary" href="@Url.Action("FailedTransactions", "UICashuWallet", new { storeId })">
+                    <a class="btn btn-secondary" href="@Url.Action("RemoveSpentProofs", "UICashuWallet", new { storeId })">
                         Remove spent ecash
                     </a>
                 </div>
@@ -168,7 +168,7 @@
         
         // Enable/disable delete button based on input
         confirmInput.addEventListener('input', function() {
-            if (this.value.trim() === @removeWalletString) {
+            if (this.value.trim() === '@removeWalletString') {
                 confirmBtn.style.pointerEvents = 'auto';
                 confirmBtn.style.opacity = '1';
             } else {

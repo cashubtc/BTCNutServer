@@ -468,6 +468,14 @@ public class StatefulWallet : IDisposable
         return await CheckTokenState(dotnutProofs);
     }
 
+    public async Task<List<StateResponseItem>> CheckIndividualProofStates(List<StoredProof> proofs)
+    {
+        await EnsureInitialized();
+        var dotnutProofs = proofs.Select(p => p.ToDotNutProof()).ToList();
+        var response = await _wallet.CheckState(dotnutProofs);
+        return response.States.ToList();
+    }
+
     public async Task<PostRestoreResponse> RestoreProofsFromInputs(
         BlindedMessage[] blindedMessages,
         CancellationToken cts = default

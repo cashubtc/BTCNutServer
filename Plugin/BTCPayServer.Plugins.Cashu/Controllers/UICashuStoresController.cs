@@ -235,7 +235,7 @@ public class UICashuStoresController : Controller
         await proofsFromWallet.ExecuteDeleteAsync();
         
         //remove exported tokens 
-        var tokensFromWallet = db.Proofs.Where(t=>t.StoreId == id);
+        var tokensFromWallet = db.ExportedTokens.Where(t=>t.StoreId == id);
         await tokensFromWallet.ExecuteDeleteAsync();
         
         // remove config and turn off cashu payment method

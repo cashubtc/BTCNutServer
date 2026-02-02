@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
+using NBXplorer.Models;
 using StoreData = BTCPayServer.Data.StoreData;
 
 namespace BTCPayServer.Plugins.Cashu.Controllers;
@@ -482,7 +483,7 @@ public class UICashuWalletController : Controller
             return NotFound("Failed to fetch mint info");
         }
     }
-
+    
     [HttpGet("{storeId}/cashu/check-token-states")]
     public async Task<IActionResult> CheckAllTokenStates(string storeId)
     {
@@ -498,54 +499,63 @@ public class UICashuWalletController : Controller
             return RedirectToAction(nameof(CashuWallet), new { storeId });
         }
 
-        // group by mint+unit, check all tokens for each group in parallel
         var checkTasks = unspentTokens
-            .GroupBy(t => (t.Mint, t.Unit))
+            .GroupBy(t => t.Mint)
             .Select(async group =>
-            {
-                var (mint, unit) = group.Key;
-                var tokens = group.ToList();
-
-                try
                 {
-                    var wallet = await _walletFactory.CreateAsync(StoreData.Id, mint, unit);
-                    var spentTokens = new List<ExportedToken>();
+                    var mint = group.Key;
+                    var tokens = group.ToList();
 
-                    foreach (var token in tokens.Where(t => t.Proofs is { Count: > 0 }))
+                    try
                     {
-                        var state = await wallet.CheckTokenState(token.Proofs);
-                        if (state == StateResponseItem.TokenState.SPENT)
+                        // we dont care about keyset sync here. nor the unit
+                        var wallet = Wallet.Create().WithMint(mint).WithKeysetSync(false);
+                        
+                        var allProofs = tokens
+                            .Where(t => t.Proofs is { Count: > 0 })
+                            .SelectMany(t => t.Proofs!)
+                            .ToList();
+
+                        if (allProofs.Count == 0)
                         {
-                            spentTokens.Add(token);
+                            return (Mint: mint, SpentTokens: new List<ExportedToken>(), Error: (Exception?)null);
                         }
+                        
+                        // map states 
+                        var states = await wallet.CheckState(allProofs);
+                        var proofToSpent = allProofs
+                            .Zip(states.States, 
+                                (p, s) => new { ProofId = p.ProofId, Spent = s.State == StateResponseItem.TokenState.SPENT})
+                            .ToDictionary(x => x.ProofId, x => x.Spent);
+                        
+                        var spentTokens = new List<ExportedToken>();
+                        foreach (var token in tokens.Where(t => t.Proofs is { Count: > 0 }))
+                        {
+                            if (token.Proofs.Any(p => proofToSpent[p.ProofId])) 
+                                spentTokens.Add(token);
+                        }
+
+                        return (Mint: mint, SpentTokens: spentTokens, Error: null);
                     }
+                    catch (Exception ex)
+                    {
+                        return (Mint: mint, SpentTokens: new List<ExportedToken>(), Error: ex);
+                    }
+                });
 
-                    return (Mint: mint, SpentTokens: spentTokens, Error: (Exception?)null);
-                }
-                catch (Exception ex)
-                {
-                    return (Mint: mint, SpentTokens: new List<ExportedToken>(), Error: ex);
-                }
-            });
+            var results = await Task.WhenAll(checkTasks);
 
-        var results = await Task.WhenAll(checkTasks);
-
-        var tokensToMarkAsSpent = new List<ExportedToken>();
-        var failedMints = new List<string>();
+            var tokensToMarkAsSpent = new List<ExportedToken>();
+            var failedMints = new List<string>();
 
         foreach (var (mint, spentTokens, error) in results)
         {
             if (error != null)
             {
-                _logger.LogWarning(
-                    "Failed to check token states for mint {Mint}: {Message}",
-                    mint,
-                    error.Message
-                );
+                _logger.LogWarning("Failed mint {Mint}: {Message}", mint, error.Message);
                 failedMints.Add(mint);
                 continue;
             }
-
             tokensToMarkAsSpent.AddRange(spentTokens);
         }
 
@@ -554,27 +564,27 @@ public class UICashuWalletController : Controller
             foreach (var token in tokensToMarkAsSpent)
             {
                 token.IsUsed = true;
-                foreach (var proof in token.Proofs)
+                if (token.Proofs != null)
                 {
-                    proof.Status = ProofState.Spent;
+                    foreach (var proof in token.Proofs)
+                    {
+                        // we don't care about partial spending yet. 
+                        proof.Status = ProofState.Spent;
+                    }
                 }
             }
-
             await db.SaveChangesAsync();
-            TempData[WellKnownTempData.SuccessMessage] =
-                $"Marked {tokensToMarkAsSpent.Count} token(s) as spent.";
+            TempData[WellKnownTempData.SuccessMessage] = $"Marked {tokensToMarkAsSpent.Count} token(s) as spent.";
         }
 
         if (failedMints.Count > 0)
-        {
-            TempData[WellKnownTempData.ErrorMessage] =
-                $"Couldn't reach {failedMints.Count} mint(s): {string.Join(", ", failedMints)}";
-        }
+            TempData[WellKnownTempData.ErrorMessage] = $"Failed {failedMints.Count} mint(s): {string.Join(", ", failedMints)}";
 
         return RedirectToAction(nameof(CashuWallet), new { storeId });
     }
-
-    [HttpPost("{storeId}/cashu/remove-spent-proofs")]
+    
+    
+    [HttpGet("{storeId}/cashu/remove-spent-proofs")]
     public async Task<IActionResult> RemoveSpentProofs(string storeId)
     {
         await using var db = _cashuDbContextFactory.CreateContext();
@@ -582,7 +592,7 @@ public class UICashuWalletController : Controller
         var proofsToCheck = await db
             .Proofs.Where(p => 
                 p.StoreId == StoreData.Id && 
-                (p.Status == ProofState.Available || p.Status == ProofState.Exported)
+                (p.Status == ProofState.Available )
             )
             .ToListAsync();
 
@@ -604,18 +614,20 @@ public class UICashuWalletController : Controller
         {
             var (mintUrl, unit) = group.Key;
             var proofs = group.ToList();
-            
+
             try
             {
-                var wallet = await _walletFactory.CreateAsync(StoreData.Id, mintUrl, unit);
-                var state = await wallet.CheckTokenState(proofs);
-                
-                if (state == StateResponseItem.TokenState.SPENT)
-                {
-                    return (Mint: mintUrl, SpentProofs: proofs, Error: (Exception?)null);
-                }
-                
-                return (Mint: mintUrl, SpentProofs: new List<StoredProof>(), Error: (Exception?)null);
+                var wallet = Wallet.Create().WithMint(mintUrl).WithKeysetSync(false);
+                var dotnutProofs = proofs.Select(p => p.ToDotNutProof()).ToList();
+                var states = await wallet.CheckState(dotnutProofs);
+
+                var spentProofs = proofs
+                    .Zip(states.States, (proof, state) => (proof, state))
+                    .Where(x => x.state.State == StateResponseItem.TokenState.SPENT)
+                    .Select(x => x.proof)
+                    .ToList();
+
+                return (Mint: mintUrl, SpentProofs: spentProofs, Error: (Exception?)null);
             }
             catch (Exception ex)
             {
@@ -665,6 +677,4 @@ public class UICashuWalletController : Controller
 
         return RedirectToAction(nameof(CashuWallet), new { storeId });
     }
-    
-
 }
