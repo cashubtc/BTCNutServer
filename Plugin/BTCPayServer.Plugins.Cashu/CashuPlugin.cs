@@ -1,4 +1,4 @@
-﻿using BTCPayServer.Abstractions.Contracts;
+using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Hosting;
 using BTCPayServer.Payments;
@@ -37,6 +37,7 @@ public class CashuPlugin : BaseBTCPayServerPlugin
         services.AddDefaultPrettyName(CashuPmid, CashuDisplayName);
 
         //Cashu Singletons
+        services.AddSingleton<MintManager>();
         services.AddSingleton<CashuStatusProvider>();
         services.AddSingleton<CashuPaymentService>();
         services.AddSingleton<RestoreService>();
@@ -62,3 +63,35 @@ public class CashuPlugin : BaseBTCPayServerPlugin
         base.Execute(services);
     }
 }
+/*                                              
+         .-+****%@@@@@@@@@@@@@@@#-                        
+         :                       #                        
+      .-+%                       @@%-                     
+   .:=*                             %                     
+   -                                @                     
+   =                                @                     
+   +                                @                     
+   +                                %                     
+   .                             #=:.                     
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@                      
+    @@@ @ @@@@@@@@@  @@@ @  @@@@@@@@                      
+   .   @@ @  @@@@@    *@@@  @ @@@                         
+   +    @@@@@@@@        @@@@@@@@                          
+   +                          @#+-                        
+   +                             #                        
+   +                             @                        
+   +                             @@@@@@@@%=               
+   +                                      =               
+   +                                      @@@+.           
+   +                                          -           
+   -                                         -@@+-        
+   .-+@                                          *        
+      +                                          @        
+      -                                          @        
+      .-+#                                       #        
+         .                                       =        
+          ..::                                +-:         
+             :=+@                         @#+-            
+                -                         .               
+                .-++++*******************=:               
+*/

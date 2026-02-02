@@ -27,6 +27,7 @@ public class StatefulWallet : IDisposable
     private readonly string _mintUrl;
     private readonly string _unit;
     private readonly CashuDbContextFactory? _dbContextFactory;
+    private readonly MintManager? _mintManager;
     private readonly string? _storeId;
     public bool HasLightningClient => _lightningClient is not null;
 
@@ -38,6 +39,7 @@ public class StatefulWallet : IDisposable
         string mint,
         string unit = "sat",
         CashuDbContextFactory? cashuDbContextFactory = null,
+        MintManager? mintManager = null,
         string? storeId = null
     )
     {
@@ -45,6 +47,7 @@ public class StatefulWallet : IDisposable
         _mintUrl = mint;
         _unit = unit;
         _dbContextFactory = cashuDbContextFactory;
+        _mintManager = mintManager;
         _storeId = storeId;
 
         _wallet = (Wallet)Wallet.Create().WithMint(CashuUtils.GetCashuHttpClient(mint), true);
@@ -55,12 +58,14 @@ public class StatefulWallet : IDisposable
         string mint,
         string unit = "sat",
         CashuDbContextFactory? cashuDbContextFactory = null,
+        MintManager? mintManager = null,
         string? storeId = null
     )
     {
         _mintUrl = mint;
         _unit = unit;
         _dbContextFactory = cashuDbContextFactory;
+        _mintManager = mintManager;
         _storeId = storeId;
 
         _wallet = (Wallet)Wallet.Create().WithMint(CashuUtils.GetCashuHttpClient(mint), true);
@@ -382,11 +387,12 @@ public class StatefulWallet : IDisposable
         await EnsureInitialized();
         var keysets = await _wallet.GetKeysets();
 
-        if (_dbContextFactory != null)
+        if (_dbContextFactory != null && _mintManager != null)
         {
             // Check missing in DB
+            var mint = await _mintManager.GetOrCreateMint(_mintUrl);
+            
             await using var db = _dbContextFactory.CreateContext();
-            var mint = await GetOrCreateMintInDb(db);
             var dbKeysets = await db
                 .MintKeys.Where(mk => mk.MintId == mint.Id)
                 .Select(mk => mk.KeysetId.ToString())
@@ -411,20 +417,6 @@ public class StatefulWallet : IDisposable
     /// </summary>
     /// <param name="db">database context. in this case - CashuDbContext instance</param>
     /// <returns>Mint object</returns>
-    private async Task<Mint> GetOrCreateMintInDb(CashuDbContext db)
-    {
-        var mint = await db.Mints.FirstOrDefaultAsync(m => m.Url == _mintUrl);
-
-        if (mint != null)
-        {
-            return mint;
-        }
-        mint = new Mint(_mintUrl);
-        db.Mints.Add(mint);
-        await db.SaveChangesAsync();
-        return mint;
-    }
-
     /// <summary>
     /// Method saving the keyset to database. Since keys won't change for given keysetID (it's derived) it can help optimize API calls to the mint.
     /// </summary>
@@ -432,32 +424,10 @@ public class StatefulWallet : IDisposable
     /// <param name="keyset"></param>
     private async Task SaveKeysetToDb(KeysetId keysetId, Keyset keyset)
     {
-        if (_dbContextFactory == null)
+        if (_mintManager == null)
             return;
 
-        await using var db = _dbContextFactory.CreateContext();
-
-        var mint = await GetOrCreateMintInDb(db);
-
-        var existingEntry = await db.MintKeys.FirstOrDefaultAsync(mk =>
-            mk.MintId == mint.Id && mk.KeysetId == keysetId
-        );
-
-        if (existingEntry is null)
-        {
-            db.MintKeys.Add(
-                new MintKeys
-                {
-                    MintId = mint.Id,
-                    Mint = mint,
-                    KeysetId = keysetId,
-                    Unit = _unit,
-                    Keyset = keyset,
-                }
-            );
-        }
-
-        await db.SaveChangesAsync();
+        await _mintManager.SaveKeyset(_mintUrl, keysetId, keyset, _unit);
     }
 
     private async Task SaveProofs(IEnumerable<Proof> proofs)
@@ -465,9 +435,12 @@ public class StatefulWallet : IDisposable
         if (_dbContextFactory == null || _storeId == null)
             return;
 
-        await using var db = _dbContextFactory.CreateContext();
-        await GetOrCreateMintInDb(db);
+        if (_mintManager != null)
+        {
+            await _mintManager.GetOrCreateMint(_mintUrl);
+        }
 
+        await using var db = _dbContextFactory.CreateContext();
         var dbProofs = StoredProof.FromBatch(proofs, _storeId, ProofState.Available);
         db.Proofs.AddRange(dbProofs);
 

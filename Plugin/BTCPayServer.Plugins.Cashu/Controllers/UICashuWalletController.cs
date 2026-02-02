@@ -36,6 +36,8 @@ public class UICashuWalletController : Controller
         PaymentMethodHandlerDictionary handlers,
         CashuPaymentService cashuPaymentService,
         CashuDbContextFactory cashuDbContextFactory,
+        MintManager mintManager,
+        StatefulWalletFactory walletFactory,
         ILogger<UICashuWalletController> logger
     )
     {
@@ -43,6 +45,8 @@ public class UICashuWalletController : Controller
         _handlers = handlers;
         _cashuPaymentService = cashuPaymentService;
         _cashuDbContextFactory = cashuDbContextFactory;
+        _mintManager = mintManager;
+        _walletFactory = walletFactory;
         _logger = logger;
     }
 
@@ -52,6 +56,8 @@ public class UICashuWalletController : Controller
     private readonly PaymentMethodHandlerDictionary _handlers;
     private readonly CashuPaymentService _cashuPaymentService;
     private readonly CashuDbContextFactory _cashuDbContextFactory;
+    private readonly MintManager _mintManager;
+    private readonly StatefulWalletFactory _walletFactory;
     private readonly ILogger<UICashuWalletController> _logger;
 
     /// <summary>
@@ -160,7 +166,7 @@ public class UICashuWalletController : Controller
         List<GetKeysetsResponse.KeysetItemResponse> keysets;
         try
         {
-            var cashuWallet = new StatefulWallet(mintUrl, unit);
+            var cashuWallet = await _walletFactory.CreateAsync(StoreData.Id, mintUrl, unit);
             keysets = await cashuWallet.GetKeysets();
             if (keysets == null || keysets.Count == 0)
             {
@@ -502,7 +508,7 @@ public class UICashuWalletController : Controller
 
                 try
                 {
-                    var wallet = new StatefulWallet(mint, unit);
+                    var wallet = await _walletFactory.CreateAsync(StoreData.Id, mint, unit);
                     var spentTokens = new List<ExportedToken>();
 
                     foreach (var token in tokens.Where(t => t.Proofs is { Count: > 0 }))
@@ -568,7 +574,97 @@ public class UICashuWalletController : Controller
         return RedirectToAction(nameof(CashuWallet), new { storeId });
     }
 
+    [HttpPost("{storeId}/cashu/remove-spent-proofs")]
+    public async Task<IActionResult> RemoveSpentProofs(string storeId)
+    {
+        await using var db = _cashuDbContextFactory.CreateContext();
+        
+        var proofsToCheck = await db
+            .Proofs.Where(p => 
+                p.StoreId == StoreData.Id && 
+                (p.Status == ProofState.Available || p.Status == ProofState.Exported)
+            )
+            .ToListAsync();
 
+        if (proofsToCheck.Count == 0)
+        {
+            TempData[WellKnownTempData.SuccessMessage] = "No proofs to check.";
+            return RedirectToAction(nameof(CashuWallet), new { storeId });
+        }
+
+        var keysetIds = proofsToCheck.Select(p => p.Id).Distinct();
+        var keysetToMintMap = await _mintManager.MapKeysetIdsToMints(keysetIds);
+
+        var proofsByMintAndUnit = proofsToCheck
+            .Where(p => keysetToMintMap.ContainsKey(p.Id.ToString()))
+            .GroupBy(p => keysetToMintMap[p.Id.ToString()])
+            .ToList();
+
+        var checkTasks = proofsByMintAndUnit.Select(async group =>
+        {
+            var (mintUrl, unit) = group.Key;
+            var proofs = group.ToList();
+            
+            try
+            {
+                var wallet = await _walletFactory.CreateAsync(StoreData.Id, mintUrl, unit);
+                var state = await wallet.CheckTokenState(proofs);
+                
+                if (state == StateResponseItem.TokenState.SPENT)
+                {
+                    return (Mint: mintUrl, SpentProofs: proofs, Error: (Exception?)null);
+                }
+                
+                return (Mint: mintUrl, SpentProofs: new List<StoredProof>(), Error: (Exception?)null);
+            }
+            catch (Exception ex)
+            {
+                return (Mint: mintUrl, SpentProofs: new List<StoredProof>(), Error: ex);
+            }
+        });
+
+        var results = await Task.WhenAll(checkTasks);
+
+        var proofsToRemove = new List<StoredProof>();
+        var failedMints = new List<string>();
+
+        foreach (var (mint, spentProofs, error) in results)
+        {
+            if (error != null)
+            {
+                _logger.LogWarning(
+                    "Failed to check proof states for mint {Mint}: {Message}",
+                    mint,
+                    error.Message
+                );
+                failedMints.Add(mint);
+                continue;
+            }
+
+            proofsToRemove.AddRange(spentProofs);
+        }
+
+        if (proofsToRemove.Count > 0)
+        {
+            db.Proofs.RemoveRange(proofsToRemove);
+            await db.SaveChangesAsync();
+            
+            TempData[WellKnownTempData.SuccessMessage] =
+                $"Removed {proofsToRemove.Count} spent proof(s) from database.";
+        }
+        else
+        {
+            TempData[WellKnownTempData.SuccessMessage] = "No spent proofs found.";
+        }
+
+        if (failedMints.Count > 0)
+        {
+            TempData[WellKnownTempData.ErrorMessage] =
+                $"Couldn't reach {failedMints.Count} mint(s): {string.Join(", ", failedMints)}";
+        }
+
+        return RedirectToAction(nameof(CashuWallet), new { storeId });
+    }
     
 
 }

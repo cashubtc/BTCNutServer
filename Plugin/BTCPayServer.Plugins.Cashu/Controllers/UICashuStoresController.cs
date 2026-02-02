@@ -92,7 +92,7 @@ public class UICashuStoresController : Controller
             model.PaymentAcceptanceModel = cashuPaymentMethodConfig.PaymentModel;
             model.TrustedMintsUrls = String.Join(
                 "\n",
-                cashuPaymentMethodConfig.TrustedMintsUrls ?? [""]
+                cashuPaymentMethodConfig.TrustedMintsUrls
             );
         }
 
@@ -187,7 +187,7 @@ public class UICashuStoresController : Controller
             MaxKeysetFee = feeConfig.MaxKeysetFee,
         };
 
-        return View("Views/Cashu/Settings/FeeSettings.cshtml", model);
+        return View("Views/Cashu/CashuSettings.cshtml", model);
     }
 
     [HttpPost("{storeId}/cashu/settings")]
@@ -217,32 +217,33 @@ public class UICashuStoresController : Controller
         return RedirectToAction(nameof(Settings), new { storeId });
     }
 
-    [HttpGet("{storeId}/cashu/remove-wallet")]
-    public async Task<IActionResult> GetRemoveWallet(string storeId)
-    {
-        return View("Views/Cashu/Settings/RemoveWallet.cshtml");
-    }
-
-    // todo make sure that user know what he's doing, he can lose his money here
-    [HttpDelete("{storeId}/cashu/remove-wallet")]
+    [HttpPost("{storeId}/cashu/remove-wallet")]
     public async Task<IActionResult> RemoveWallet(string storeId)
     {
-        if (StoreData?.Id == null)
+        if (StoreData?.Id is not {} id)
         {
             return NotFound();
         }
         // remove wallet config
         await using var db = _cashuDbContextFactory.CreateContext();
-        var currentConfig = db.CashuWalletConfig.Where(cwc => cwc.StoreId == StoreData.Id);
+        var currentConfig = db.CashuWalletConfig.Where(cwc => cwc.StoreId == id);
         await currentConfig.ExecuteDeleteAsync();
-
+        
+        //remove proofs
+        var proofsFromWallet = db.Proofs.Where(p=>p.StoreId == id);
+        await proofsFromWallet.ExecuteDeleteAsync();
+        
+        //remove exported tokens 
+        var tokensFromWallet = db.Proofs.Where(t=>t.StoreId == id);
+        await tokensFromWallet.ExecuteDeleteAsync();
+        
         // remove config and turn off cashu payment method
         var blob = StoreData.GetStoreBlob();
         blob.SetExcluded(CashuPlugin.CashuPmid, true);
         StoreData.SetStoreBlob(blob);
-
         await _storeRepository.UpdateStore(StoreData);
+        
         TempData[WellKnownTempData.SuccessMessage] = "Wallet removed successfully";
-        return RedirectToAction("Dashboard", nameof(UIStoresController.Dashboard), new {StoreId = StoreData.Id});
+        return RedirectToAction("Dashboard", "UIStores", new {StoreId = StoreData.Id});
     }
 }

@@ -21,6 +21,7 @@ public class StatefulWalletFactory
     private readonly LightningClientFactoryService _lightningClientFactoryService;
     private readonly IOptions<LightningNetworkOptions> _lightningNetworkOptions;
     private readonly CashuDbContextFactory _cashuDbContextFactory;
+    private readonly MintManager _mintManager;
     private readonly BTCPayNetworkProvider _networkProvider;
     private readonly ILogger<StatefulWalletFactory> _logger;
 
@@ -30,6 +31,7 @@ public class StatefulWalletFactory
         LightningClientFactoryService lightningClientFactoryService,
         IOptions<LightningNetworkOptions> lightningNetworkOptions,
         CashuDbContextFactory cashuDbContextFactory,
+        MintManager mintManager,
         BTCPayNetworkProvider networkProvider,
         ILogger<StatefulWalletFactory> logger
     )
@@ -39,6 +41,7 @@ public class StatefulWalletFactory
         _lightningClientFactoryService = lightningClientFactoryService;
         _lightningNetworkOptions = lightningNetworkOptions;
         _cashuDbContextFactory = cashuDbContextFactory;
+        _mintManager = mintManager;
         _networkProvider = networkProvider;
         _logger = logger;
     }
@@ -82,11 +85,12 @@ public class StatefulWalletFactory
                 mintUrl,
                 unit,
                 _cashuDbContextFactory,
+                _mintManager,
                 storeId
             );
         }
 
-        return new StatefulWallet(mintUrl, unit, _cashuDbContextFactory, storeId);
+        return new StatefulWallet(mintUrl, unit, _cashuDbContextFactory, _mintManager, storeId);
     }
 
     private ILightningClient? GetStoreLightningClient(StoreData store, BTCPayNetwork network)

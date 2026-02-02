@@ -33,6 +33,7 @@ namespace BTCPayServer.Plugins.Cashu.PaymentHandlers;
 public class CashuPaymentService
 {
     private readonly CashuDbContextFactory _cashuDbContextFactory;
+    private readonly MintManager _mintManager;
     private readonly PaymentMethodHandlerDictionary _handlers;
     private readonly InvoiceRepository _invoiceRepository;
     private readonly LightningClientFactoryService _lightningClientFactoryService;
@@ -50,6 +51,7 @@ public class CashuPaymentService
         LightningClientFactoryService lightningClientFactoryService,
         IOptions<LightningNetworkOptions> lightningNetworkOptions,
         CashuDbContextFactory cashuDbContextFactory,
+        MintManager mintManager,
         StatefulWalletFactory statefulWalletFactory,
         Logs logs
     )
@@ -61,6 +63,7 @@ public class CashuPaymentService
         _lightningClientFactoryService = lightningClientFactoryService;
         _lightningNetworkOptions = lightningNetworkOptions;
         _cashuDbContextFactory = cashuDbContextFactory;
+        _mintManager = mintManager;
         _statefulWalletFactory = statefulWalletFactory;
         _logs = logs;
     }
@@ -644,12 +647,10 @@ public class CashuPaymentService
         {
             return;
         }
+        
+        await _mintManager.GetOrCreateMint(mintUrl);
 
         await using var dbContext = _cashuDbContextFactory.CreateContext();
-
-        if (!dbContext.Mints.Any(m => m.Url == mintUrl))
-            dbContext.Mints.Add(new Mint(mintUrl));
-
         var dbProofs = StoredProof.FromBatch(enumerable, storeId, status);
         dbContext.Proofs.AddRange(dbProofs);
 

@@ -88,6 +88,8 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
             entity.HasKey(mk => new { mk.MintId, mk.KeysetId });
 
             entity.HasIndex(mk => mk.MintId);
+            
+            entity.HasIndex(mk => mk.KeysetId).IsUnique();
 
             entity.HasOne(mk => mk.Mint).WithMany(m => m.Keysets).HasForeignKey(mk => mk.MintId);
 

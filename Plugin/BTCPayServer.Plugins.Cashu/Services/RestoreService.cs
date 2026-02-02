@@ -28,13 +28,15 @@ public class RestoreService : IHostedService
     private readonly ConcurrentDictionary<string, RestoreStatus> _restoreStatuses = new();
     private readonly ConcurrentQueue<RestoreJob> _restoreQueue = new();
     private readonly CashuDbContextFactory _dbContextFactory;
+    private readonly MintManager _mintManager;
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _processingTask;
 
-    public RestoreService(ILogger<RestoreService> logger, CashuDbContextFactory dbContextFactory)
+    public RestoreService(ILogger<RestoreService> logger, CashuDbContextFactory dbContextFactory, MintManager mintManager)
     {
         _logger = logger;
         _dbContextFactory = dbContextFactory;
+        _mintManager = mintManager;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -309,13 +311,10 @@ public class RestoreService : IHostedService
     {
         try
         {
+            await _mintManager.GetOrCreateMint(mintUrl);
+
             await using var db = _dbContextFactory.CreateContext();
 
-            // add mint to db if not present.
-            if (!db.Mints.Any(m => m.Url == mintUrl))
-            {
-                db.Mints.Add(new Mint(mintUrl));
-            }
             // add proofs
             db.Proofs.AddRange(StoredProof.FromBatch(proofs, storeId, ProofState.Available));
 
