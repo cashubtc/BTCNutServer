@@ -65,13 +65,11 @@ public static class CashuUtils
         >("bolt11", new PostMintQuoteBolt11Request { Amount = 1000, Unit = unit });
         var paymentRequest = mintQuote.Request;
 
-        //todo change after development
-        // if (!BOLT11PaymentRequest.TryParse(paymentRequest, out var parsedPaymentRequest, network))
         if (
             !BOLT11PaymentRequest.TryParse(
                 paymentRequest,
                 out var parsedPaymentRequest,
-                Network.Main
+                network
             )
         )
         {
@@ -111,7 +109,7 @@ public static class CashuUtils
 
         return new SimplifiedCashuToken
         {
-            Mint = firstToken.Mint,
+            Mint = MintManager.NormalizeMintUrl(firstToken.Mint),
             Proofs = proofs,
             Memo = token.Memo,
             Unit = token.Unit ?? "sat",

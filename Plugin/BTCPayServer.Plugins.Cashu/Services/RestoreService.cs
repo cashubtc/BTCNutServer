@@ -269,9 +269,7 @@ public class RestoreService : IHostedService
         CancellationToken ct
     )
     {
-        using var httpClient = new HttpClient() { BaseAddress = new Uri(mintUrl) };
-        var mint = new CashuHttpClient(httpClient);
-
+        var mint = CashuUtils.GetCashuHttpClient(mintUrl);
         var counter = new DbCounter(_dbContextFactory, storeId);
         var wallet = Wallet.Create().WithMint(mint).WithMnemonic(seed).WithCounter(counter);
 

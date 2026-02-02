@@ -8,6 +8,7 @@ using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Client;
 using BTCPayServer.Data;
 using BTCPayServer.Models.StoreViewModels;
+using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
@@ -99,15 +100,16 @@ public class UICashuOnboardingController : Controller
 
         for (var i = 0; i < model.MintUrls.Count; i++)
         {
-            var mint = model.MintUrls[i].TrimEnd('/');
-            model.MintUrls[i] = mint;
+            var raw = model.MintUrls[i].Trim();
             if (
-                !Uri.TryCreate(mint, UriKind.Absolute, out var uri)
+                !Uri.TryCreate(raw, UriKind.Absolute, out var uri)
                 || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp)
             )
             {
                 invalidMintsIndices.Add(i);
+                continue;
             }
+            model.MintUrls[i] = MintManager.NormalizeMintUrl(raw);
         }
 
         if (invalidWordIndices.Count > 0 || invalidMintsIndices.Count > 0)

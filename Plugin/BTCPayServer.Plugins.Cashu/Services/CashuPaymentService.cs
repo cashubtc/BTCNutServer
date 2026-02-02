@@ -256,6 +256,18 @@ public class CashuPaymentService
         CancellationToken cts = default
     )
     {
+        // Pre-validate keyset ownership before swap to avoid losing funds on conflict
+        try
+        {
+            var inputKeysetIds = token.Proofs.Select(p => p.Id).Distinct().ToList();
+            await _mintManager.ValidateKeysetOwnership(token.Mint, inputKeysetIds);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logs.PayServer.LogError("(Cashu) Keyset ID conflict detected before swap: {msg}", ex.Message);
+            throw new CashuPaymentException("Token rejected: keyset ID conflict detected. Funds were not spent.", ex);
+        }
+
         List<GetKeysetsResponse.KeysetItemResponse> keysets = null;
         try
         {
@@ -403,6 +415,18 @@ public class CashuPaymentService
         {
             _logs.PayServer.LogError("Could not find lightning client!");
             throw new CashuPluginException("Could not find lightning client!");
+        }
+
+        // Pre-validate keyset ownership before melt to avoid losing funds on conflict
+        try
+        {
+            var inputKeysetIds = token.Proofs.Select(p => p.Id).Distinct().ToList();
+            await _mintManager.ValidateKeysetOwnership(token.Mint, inputKeysetIds);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logs.PayServer.LogError("(Cashu) Keyset ID conflict detected before melt: {msg}", ex.Message);
+            throw new CashuPaymentException("Token rejected: keyset ID conflict detected. Funds were not spent.", ex);
         }
 
         List<GetKeysetsResponse.KeysetItemResponse> keysets;
@@ -572,11 +596,67 @@ public class CashuPaymentService
                     "Network error occured while processing melt {txId}. Please verify transaction manually",
                     invoice.Id
                 );
-                await wallet.CheckTokenState(token.Proofs);
                 await using var db = _cashuDbContextFactory.CreateContext();
                 await db.FailedTransactions.AddAsync(ftx);
                 await db.SaveChangesAsync();
             }
+        }
+        else if (meltResponse.ChangeProofs != null)
+        {
+            // melt succeeded at mint level (LN invoice paid) but SaveProofs failed due to db error.
+            // changeProofs being populated means the mint completed the melt.
+            var lnInvPaid = await wallet.ValidateLightningInvoicePaid(
+                meltQuoteResponse.Invoice?.Id
+            );
+
+            if (lnInvPaid)
+            {
+                var amountMelted = Money.Satoshis(
+                    meltQuoteResponse.Invoice.Amount.ToUnit(LightMoneyUnit.Satoshi)
+                );
+                await RegisterCashuPayment(invoice, handler, amountMelted);
+
+                _logs.PayServer.LogWarning(
+                    "(Cashu) Melt succeeded at mint but SaveProofs failed. Invoice: {InvoiceId}. Change proofs lost. Error: {Error}",
+                    invoice.Id,
+                    meltResponse.Error?.Message
+                );
+            }
+
+            // Save FailedTransaction for lost change proofs
+            var ftx = new FailedTransaction
+            {
+                StoreId = store.Id,
+                InvoiceId = invoice.Id,
+                LastRetried = DateTimeOffset.UtcNow,
+                MintUrl = token.Mint,
+                Unit = token.Unit,
+                InputProofs = token.Proofs.ToArray(),
+                OperationType = OperationType.Melt,
+                OutputData = meltResponse.BlankOutputs,
+                MeltDetails = new MeltDetails
+                {
+                    Expiry = DateTimeOffset.FromUnixTimeSeconds(
+                        meltQuoteResponse.MeltQuote.Expiry ?? DateTime.Now.UnixTimestamp()
+                    ),
+                    LightningInvoiceId = meltQuoteResponse.Invoice!.Id,
+                    MeltQuoteId = meltResponse.Quote!.Quote,
+                    Status = lnInvPaid ? "PAID" : "PENDING",
+                },
+                RetryCount = 1,
+                Details = $"Melt succeeded at mint but local SaveProofs failed. Error: {meltResponse.Error?.Message}",
+            };
+            await using var ctx = _cashuDbContextFactory.CreateContext();
+            ctx.FailedTransactions.Add(ftx);
+            await ctx.SaveChangesAsync();
+        }
+        else
+        {
+            _logs.PayServer.LogError(
+                "(Cashu) Unexpected melt error: {Error}",
+                meltResponse.Error?.Message
+            );
+            throw new CashuPaymentException("Could not process melt!");
         }
     }
 
@@ -768,6 +848,10 @@ public class CashuPaymentService
                         return new PollResult() { State = CashuPaymentState.Success };
                     }
                     var keys = await wallet.GetKeys(firstChange.Id);
+                    if (keys == null)
+                    {
+                        return new PollResult() { State = CashuPaymentState.Success };
+                    }
                     var proofs = DotNut.Abstractions.Utils.ConstructProofsFromPromises(
                         meltQuoteState.Change.ToList(),
                         ftx.OutputData,

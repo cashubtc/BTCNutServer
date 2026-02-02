@@ -6,6 +6,7 @@ using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Client;
 using BTCPayServer.Controllers;
 using BTCPayServer.Data;
+using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.PaymentHandlers;
@@ -109,11 +110,11 @@ public class UICashuStoresController : Controller
         var blob = store.GetStoreBlob();
         viewModel.TrustedMintsUrls ??= "";
 
-        //trimming trailing slash
         var parsedTrustedMintsUrls = viewModel
             .TrustedMintsUrls.Split(["\r\n", "\r", "\n"], StringSplitOptions.RemoveEmptyEntries)
-            .Select(line => line.Trim().TrimEnd('/'))
+            .Select(line => line.Trim())
             .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Select(MintManager.NormalizeMintUrl)
             .ToList();
 
         var lightningEnabled = StoreData.IsLightningEnabled("BTC");

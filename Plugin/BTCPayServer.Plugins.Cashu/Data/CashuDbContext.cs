@@ -80,6 +80,11 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
                 );
         });
 
+        modelBuilder.Entity<Mint>(entity =>
+        {
+            entity.HasIndex(m => m.Url).IsUnique();
+        });
+
         modelBuilder.Entity<MintKeys>(entity =>
         {
             entity
