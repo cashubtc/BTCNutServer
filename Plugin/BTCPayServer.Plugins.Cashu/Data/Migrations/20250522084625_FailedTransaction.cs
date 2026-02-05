@@ -14,34 +14,40 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
             migrationBuilder.DropForeignKey(
                 name: "FK_Proofs_FailedTransactions_FailedTransactionInvoiceId_Failed~",
                 schema: "BTCPayServer.Plugins.Cashu",
-                table: "Proofs");
+                table: "Proofs"
+            );
 
             migrationBuilder.DropIndex(
                 name: "IX_Proofs_FailedTransactionInvoiceId_FailedTransactionMintUrl",
                 schema: "BTCPayServer.Plugins.Cashu",
-                table: "Proofs");
+                table: "Proofs"
+            );
 
             migrationBuilder.DropPrimaryKey(
                 name: "PK_FailedTransactions",
                 schema: "BTCPayServer.Plugins.Cashu",
-                table: "FailedTransactions");
+                table: "FailedTransactions"
+            );
 
             migrationBuilder.DropColumn(
                 name: "FailedTransactionInvoiceId",
                 schema: "BTCPayServer.Plugins.Cashu",
-                table: "Proofs");
+                table: "Proofs"
+            );
 
             migrationBuilder.DropColumn(
                 name: "FailedTransactionMintUrl",
                 schema: "BTCPayServer.Plugins.Cashu",
-                table: "Proofs");
+                table: "Proofs"
+            );
 
             migrationBuilder.AddColumn<Guid>(
                 name: "FailedTransactionId",
                 schema: "BTCPayServer.Plugins.Cashu",
                 table: "Proofs",
                 type: "uuid",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AlterColumn<string>(
                 name: "MintUrl",
@@ -50,7 +56,8 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
                 type: "text",
                 nullable: true,
                 oldClrType: typeof(string),
-                oldType: "text");
+                oldType: "text"
+            );
 
             migrationBuilder.AlterColumn<string>(
                 name: "InvoiceId",
@@ -59,19 +66,22 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
                 type: "text",
                 nullable: true,
                 oldClrType: typeof(string),
-                oldType: "text");
+                oldType: "text"
+            );
 
             migrationBuilder.AddPrimaryKey(
                 name: "PK_FailedTransactions",
                 schema: "BTCPayServer.Plugins.Cashu",
                 table: "FailedTransactions",
-                column: "Id");
+                column: "Id"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Proofs_FailedTransactionId",
                 schema: "BTCPayServer.Plugins.Cashu",
                 table: "Proofs",
-                column: "FailedTransactionId");
+                column: "FailedTransactionId"
+            );
 
             migrationBuilder.AddForeignKey(
                 name: "FK_Proofs_FailedTransactions_FailedTransactionId",
@@ -80,7 +90,8 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
                 column: "FailedTransactionId",
                 principalSchema: "BTCPayServer.Plugins.Cashu",
                 principalTable: "FailedTransactions",
-                principalColumn: "Id");
+                principalColumn: "Id"
+            );
         }
 
         /// <inheritdoc />
@@ -89,36 +100,42 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
             migrationBuilder.DropForeignKey(
                 name: "FK_Proofs_FailedTransactions_FailedTransactionId",
                 schema: "BTCPayServer.Plugins.Cashu",
-                table: "Proofs");
+                table: "Proofs"
+            );
 
             migrationBuilder.DropIndex(
                 name: "IX_Proofs_FailedTransactionId",
                 schema: "BTCPayServer.Plugins.Cashu",
-                table: "Proofs");
+                table: "Proofs"
+            );
 
             migrationBuilder.DropPrimaryKey(
                 name: "PK_FailedTransactions",
                 schema: "BTCPayServer.Plugins.Cashu",
-                table: "FailedTransactions");
+                table: "FailedTransactions"
+            );
 
             migrationBuilder.DropColumn(
                 name: "FailedTransactionId",
                 schema: "BTCPayServer.Plugins.Cashu",
-                table: "Proofs");
+                table: "Proofs"
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "FailedTransactionInvoiceId",
                 schema: "BTCPayServer.Plugins.Cashu",
                 table: "Proofs",
                 type: "text",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "FailedTransactionMintUrl",
                 schema: "BTCPayServer.Plugins.Cashu",
                 table: "Proofs",
                 type: "text",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AlterColumn<string>(
                 name: "MintUrl",
@@ -129,7 +146,8 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
                 defaultValue: "",
                 oldClrType: typeof(string),
                 oldType: "text",
-                oldNullable: true);
+                oldNullable: true
+            );
 
             migrationBuilder.AlterColumn<string>(
                 name: "InvoiceId",
@@ -140,19 +158,22 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
                 defaultValue: "",
                 oldClrType: typeof(string),
                 oldType: "text",
-                oldNullable: true);
+                oldNullable: true
+            );
 
             migrationBuilder.AddPrimaryKey(
                 name: "PK_FailedTransactions",
                 schema: "BTCPayServer.Plugins.Cashu",
                 table: "FailedTransactions",
-                columns: new[] { "InvoiceId", "MintUrl" });
+                columns: new[] { "InvoiceId", "MintUrl" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Proofs_FailedTransactionInvoiceId_FailedTransactionMintUrl",
                 schema: "BTCPayServer.Plugins.Cashu",
                 table: "Proofs",
-                columns: new[] { "FailedTransactionInvoiceId", "FailedTransactionMintUrl" });
+                columns: new[] { "FailedTransactionInvoiceId", "FailedTransactionMintUrl" }
+            );
 
             migrationBuilder.AddForeignKey(
                 name: "FK_Proofs_FailedTransactions_FailedTransactionInvoiceId_Failed~",
@@ -161,7 +182,8 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
                 columns: new[] { "FailedTransactionInvoiceId", "FailedTransactionMintUrl" },
                 principalSchema: "BTCPayServer.Plugins.Cashu",
                 principalTable: "FailedTransactions",
-                principalColumns: new[] { "InvoiceId", "MintUrl" });
+                principalColumns: new[] { "InvoiceId", "MintUrl" }
+            );
         }
     }
 }

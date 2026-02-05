@@ -11,11 +11,11 @@ using BTCPayServer.Logging;
 using BTCPayServer.Payments;
 using BTCPayServer.Payments.Bitcoin;
 using BTCPayServer.Payments.Lightning;
+using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
 using BTCPayServer.Plugins.Cashu.Errors;
-using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Services;
 using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
@@ -33,6 +33,7 @@ namespace BTCPayServer.Plugins.Cashu.PaymentHandlers;
 public class CashuPaymentService
 {
     private readonly CashuDbContextFactory _cashuDbContextFactory;
+    private readonly MintManager _mintManager;
     private readonly PaymentMethodHandlerDictionary _handlers;
     private readonly InvoiceRepository _invoiceRepository;
     private readonly LightningClientFactoryService _lightningClientFactoryService;
@@ -40,7 +41,8 @@ public class CashuPaymentService
     private readonly Logs _logs;
     private readonly PaymentService _paymentService;
     private readonly StoreRepository _storeRepository;
-    
+    private readonly StatefulWalletFactory _statefulWalletFactory;
+
     public CashuPaymentService(
         StoreRepository storeRepository,
         InvoiceRepository invoiceRepository,
@@ -49,7 +51,10 @@ public class CashuPaymentService
         LightningClientFactoryService lightningClientFactoryService,
         IOptions<LightningNetworkOptions> lightningNetworkOptions,
         CashuDbContextFactory cashuDbContextFactory,
-        Logs logs)
+        MintManager mintManager,
+        StatefulWalletFactory statefulWalletFactory,
+        Logs logs
+    )
     {
         _storeRepository = storeRepository;
         _invoiceRepository = invoiceRepository;
@@ -58,10 +63,11 @@ public class CashuPaymentService
         _lightningClientFactoryService = lightningClientFactoryService;
         _lightningNetworkOptions = lightningNetworkOptions;
         _cashuDbContextFactory = cashuDbContextFactory;
+        _mintManager = mintManager;
+        _statefulWalletFactory = statefulWalletFactory;
         _logs = logs;
     }
 
-    
     /// <summary>
     /// Processing the payment from user input;
     /// </summary>
@@ -74,7 +80,7 @@ public class CashuPaymentService
         CashuToken token,
         string invoiceId,
         CancellationToken cancellationToken = default
-        )
+    )
     {
         _logs.PayServer.LogInformation($"(Cashu) Processing payment for invoice {invoiceId}");
 
@@ -82,11 +88,13 @@ public class CashuPaymentService
 
         if (invoice == null)
             throw new CashuPaymentException("Invalid invoice");
-                
+
         var storeData = await _storeRepository.FindStore(invoice.StoreId);
 
-        var cashuPaymentMethodConfig =
-            storeData?.GetPaymentMethodConfig<CashuPaymentMethodConfig>(CashuPlugin.CashuPmid, _handlers);
+        var cashuPaymentMethodConfig = storeData?.GetPaymentMethodConfig<CashuPaymentMethodConfig>(
+            CashuPlugin.CashuPmid,
+            _handlers
+        );
         if (cashuPaymentMethodConfig == null)
         {
             _logs.PayServer.LogError("(Cashu) Couldn't get Cashu Payment method config");
@@ -99,75 +107,110 @@ public class CashuPaymentService
             _logs.PayServer.LogError("(Cashu) Invalid Cashu Payment method handler");
             throw new CashuPaymentException("Coudldn't process the payment. Token wasn't spent");
         }
-        
+
         var network = hasNetwork.Network;
-        
+
         decimal singleUnitSatoshiWorth;
         try
         {
-            singleUnitSatoshiWorth = await CashuUtils.GetTokenSatRate(token, network.NBitcoinNetwork);
+            singleUnitSatoshiWorth = await CashuUtils.GetTokenSatRate(
+                token,
+                network.NBitcoinNetwork
+            );
         }
         catch (HttpRequestException)
         {
-            _logs.PayServer.LogError("(Cashu) Couldn't connect to: {mint}",token.Tokens.First().Mint );
+            var mintUrl = token.Tokens.FirstOrDefault()?.Mint ?? "unknown mint";
+            _logs.PayServer.LogError("(Cashu) Couldn't connect to: {mint}", mintUrl);
             throw new CashuPaymentException("Mint unreachable.");
         }
         catch (CashuProtocolException ex)
         {
-            _logs.PayServer.LogError("(Cashu) Protocol error occurred while processing {invoiceId} invoice; {ex}", invoiceId, ex.Message);
-            throw new CashuPaymentException(ex.Message, ex); 
+            _logs.PayServer.LogError(
+                "(Cashu) Protocol error occurred while processing {invoiceId} invoice; {ex}",
+                invoiceId,
+                ex.Message
+            );
+            throw new CashuPaymentException(ex.Message, ex);
         }
         catch (Exception ex)
         {
-            _logs.PayServer.LogError("(Cashu) Couldn't fetch token/sat rate for invoice {invoiceId}", invoiceId);
-            throw new CashuPaymentException("Coudldn't process the payment. Can't fetch token/satoshi rate from mint");
+            _logs.PayServer.LogError(
+                "(Cashu) Couldn't fetch token/sat rate for invoice {invoiceId}",
+                invoiceId
+            );
+            throw new CashuPaymentException(
+                "Coudldn't process the payment. Can't fetch token/satoshi rate from mint"
+            );
         }
-        
-        var invoiceAmount =Money.Coins( 
+
+        var invoiceAmount = Money.Coins(
             invoice.GetPaymentPrompt(CashuPlugin.CashuPmid)?.Calculate().Due ?? invoice.Price
         );
-        
+
         var simplifiedToken = CashuUtils.SimplifyToken(token);
         var providedAmount = Money.Satoshis(
             Math.Floor(Convert.ToDecimal(simplifiedToken.SumProofs * singleUnitSatoshiWorth))
-            );
-        
+        );
+
         if (providedAmount < invoiceAmount)
         {
-            _logs.PayServer.LogError("(Cashu) Insufficient token worth for invoice {invoiceId}. Expected {invoiceSats}, calculated {calculated}.", invoiceId, invoiceAmount.Satoshi, providedAmount.Satoshi );
+            _logs.PayServer.LogError(
+                "(Cashu) Insufficient token worth for invoice {invoiceId}. Expected {invoiceSats}, calculated {calculated}.",
+                invoiceId,
+                invoiceAmount.Satoshi,
+                providedAmount.Satoshi
+            );
             throw new CashuPaymentException("Insufficient token value.");
         }
-        
+
         _logs.PayServer.LogInformation(
-            "(Cashu) Processing Cashu payment. Invoice: {InvoiceId}, Store: {StoreId}, Amount: {AmountSats} sat", 
+            "(Cashu) Processing Cashu payment. Invoice: {InvoiceId}, Store: {StoreId}, Amount: {AmountSats} sat",
             invoiceId,
-            invoice.StoreId, 
+            invoice.StoreId,
             invoiceAmount.Satoshi
         );
-        
+
+        var wallet = await _statefulWalletFactory.CreateAsync(
+            storeData.Id,
+            simplifiedToken.Mint,
+            simplifiedToken.Unit
+        );
+
+        if (cashuPaymentMethodConfig.PaymentModel == CashuPaymentModel.AutoConvert)
+        {
+            await HandleMeltOperation(
+                wallet,
+                invoice,
+                storeData,
+                simplifiedToken,
+                handler as CashuPaymentMethodHandler,
+                singleUnitSatoshiWorth,
+                cashuPaymentMethodConfig.FeeConfing
+            );
+            return;
+        }
+
         if (cashuPaymentMethodConfig.TrustedMintsUrls.Contains(simplifiedToken.Mint))
         {
-            var wallet = new CashuWallet(simplifiedToken.Mint, simplifiedToken.Unit, _cashuDbContextFactory);
             await EnsureTokenSpendable(wallet, simplifiedToken.Proofs);
             await HandleSwapOperation(
                 wallet,
-                invoice, 
-                storeData, 
-                simplifiedToken, 
-                cashuPaymentMethodConfig.FeeConfing, 
-                handler as CashuPaymentMethodHandler, 
+                invoice,
+                storeData,
+                simplifiedToken,
+                cashuPaymentMethodConfig.FeeConfing,
+                handler as CashuPaymentMethodHandler,
                 providedAmount.Satoshi,
                 cancellationToken
-                );
+            );
             return;
         }
 
         switch (cashuPaymentMethodConfig.PaymentModel)
         {
-            case CashuPaymentModel.MeltImmediately:
+            case CashuPaymentModel.HoldWhenTrusted:
             {
-                var lnClient = GetStoreLightningClient(storeData, network);
-                var wallet = new CashuWallet(lnClient, simplifiedToken.Mint, simplifiedToken.Unit, _cashuDbContextFactory);
                 await EnsureTokenSpendable(wallet, simplifiedToken.Proofs);
                 await HandleMeltOperation(
                     wallet,
@@ -177,13 +220,16 @@ public class CashuPaymentService
                     handler as CashuPaymentMethodHandler,
                     singleUnitSatoshiWorth,
                     cashuPaymentMethodConfig.FeeConfing
-                    );
+                );
                 return;
             }
-            case CashuPaymentModel.SwapAndHodl:
+            case CashuPaymentModel.TrustedMintsOnly:
             {
-                throw new CashuPaymentException("Can't process this payment. Merchant can't trust this mint.");
+                throw new CashuPaymentException(
+                    "Can't process this payment. Merchant can't trust this mint."
+                );
             }
+            case CashuPaymentModel.AutoConvert: // this should never happen
             default:
             {
                 throw new Exception("Unknown cashu payment model");
@@ -191,8 +237,6 @@ public class CashuPaymentService
         }
     }
 
-
-    
     /// <summary>
     /// Abstraction for handling Swap Operations
     /// </summary>
@@ -202,7 +246,7 @@ public class CashuPaymentService
     /// <param name="feeConfig">Fee configuration</param>
     /// <exception cref="CashuPaymentException">Error with message passed to UI</exception>
     private async Task HandleSwapOperation(
-        CashuWallet wallet,
+        StatefulWallet wallet,
         InvoiceEntity invoice,
         StoreData store,
         CashuUtils.SimplifiedCashuToken token,
@@ -212,6 +256,18 @@ public class CashuPaymentService
         CancellationToken cts = default
     )
     {
+        // Pre-validate keyset ownership before swap to avoid losing funds on conflict
+        try
+        {
+            var inputKeysetIds = token.Proofs.Select(p => p.Id).Distinct().ToList();
+            await _mintManager.ValidateKeysetOwnership(token.Mint, inputKeysetIds);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logs.PayServer.LogError("(Cashu) Keyset ID conflict detected before swap: {msg}", ex.Message);
+            throw new CashuPaymentException("Token rejected: keyset ID conflict detected. Funds were not spent.", ex);
+        }
+
         List<GetKeysetsResponse.KeysetItemResponse> keysets = null;
         try
         {
@@ -227,22 +283,24 @@ public class CashuPaymentService
             throw new CashuPaymentException("Could not get keysets!", ex);
         }
 
-        if (!CashuUtils.ValidateFees(token.Proofs, feeConfig, keysets,
-                out var keysetFee))
+        if (!CashuUtils.ValidateFees(token.Proofs, feeConfig, keysets, out var keysetFee))
         {
-            _logs.PayServer.LogError("(Cashu) Keyset fees bigger than configured limit! {fee} Token wasn't spent. ", keysetFee);
+            _logs.PayServer.LogError(
+                "(Cashu) Keyset fees bigger than configured limit! {fee} Token wasn't spent. ",
+                keysetFee
+            );
             throw new CashuPaymentException("Fees too big!");
         }
-        
+
         _logs.PayServer.LogDebug(
-            "(Cashu) Swap initiated. Mint: {MintUrl}, InputProofs: {ProofCount}, Fee: {FeeSats} sat", 
-            token.Mint, 
-            token.Proofs.Count, 
+            "(Cashu) Swap initiated. Mint: {MintUrl}, InputProofs: {ProofCount}, Fee: {FeeSats} sat",
+            token.Mint,
+            token.Proofs.Count,
             keysetFee
         );
-        
+
         var swapResult = await wallet.Receive(token.Proofs, keysetFee);
-        
+
         //handle swap errors
         if (!swapResult.Success)
         {
@@ -250,19 +308,19 @@ public class CashuPaymentService
             {
                 case CashuProtocolException cpe:
                     throw new CashuPaymentException(cpe.Message);
-                
+
                 case CashuPaymentException cpe:
                     throw cpe;
-                
+
                 case HttpRequestException httpException:
                 {
                     var ftx = new FailedTransaction()
                     {
                         InvoiceId = invoice.Id,
                         StoreId = invoice.StoreId,
-                        LastRetried = DateTimeOffset.Now.ToUniversalTime(),
+                        LastRetried = DateTimeOffset.UtcNow,
                         MintUrl = token.Mint,
-                        UsedProofs = StoredProof.FromBatch(token.Proofs, invoice.StoreId).ToList(),
+                        InputProofs = token.Proofs.ToArray(),
                         OperationType = OperationType.Swap,
                         OutputData = swapResult.ProvidedOutputs,
                         Unit = token.Unit,
@@ -273,26 +331,40 @@ public class CashuPaymentService
 
                     if (!pollResult.Success)
                     {
-                        ftx.RetryCount +=1;
+                        ftx.RetryCount += 1;
                         ftx.LastRetried = DateTimeOffset.Now.ToUniversalTime();
                         await using var db = _cashuDbContextFactory.CreateContext();
                         await db.FailedTransactions.AddAsync(ftx, cts);
-                        _logs.PayServer.LogError("(Cashu) Transaction {id} failed because of broken connection with mint. See Failed Transactions in settings.", invoice.Id);
+                        _logs.PayServer.LogError(
+                            "(Cashu) Transaction {id} failed because of broken connection with mint. See Failed Transactions in settings.",
+                            invoice.Id
+                        );
                         await db.SaveChangesAsync(cts);
                         return;
                     }
-                    
-                    await AddProofsToDb(pollResult.ResultProofs!, ftx.StoreId, ftx.MintUrl);
+
+                    await AddProofsToDb(
+                        pollResult.ResultProofs!,
+                        ftx.StoreId,
+                        ftx.MintUrl,
+                        ProofState.Available
+                    );
                     await RegisterCashuPayment(invoice, handler, Money.Satoshis(tokenSatoshiWorth));
-                    break;
+                    return;
                 }
+                default:
+                    _logs.PayServer.LogError(
+                        "(Cashu) Swap failed: {ex}",
+                        swapResult.Error?.Message
+                    );
+                    throw new CashuPaymentException("Swap failed processing.");
             }
         }
-        
+
         var returnedAmount = swapResult.ResultProofs!.Select(p => p.Amount).Sum();
         _logs.PayServer.LogInformation(
-            "(Cashu) Swap operation success. {amount} {unit} received.", 
-            returnedAmount, 
+            "(Cashu) Swap operation success. {amount} {unit} received.",
+            returnedAmount,
             token.Unit
         );
         if (returnedAmount < token.SumProofs - keysetFee)
@@ -301,41 +373,62 @@ public class CashuPaymentService
             {
                 InvoiceId = invoice.Id,
                 StoreId = invoice.StoreId,
-                LastRetried = DateTimeOffset.Now.ToUniversalTime(),
+                LastRetried = DateTimeOffset.UtcNow,
                 MintUrl = token.Mint,
-                UsedProofs = StoredProof.FromBatch(token.Proofs, invoice.StoreId).ToList(),
+                InputProofs = token.Proofs.ToArray(),
                 OperationType = OperationType.Swap,
                 OutputData = swapResult.ProvidedOutputs,
                 Unit = token.Unit,
                 RetryCount = 0,
-                Details = "Mint Returned less signatures than was requested. Even though, merchant received the payment"
+                Details =
+                    "Mint Returned less signatures than was requested. Even though, merchant received the payment",
             };
-            _logs.PayServer.LogError("(Cashu) Mint returned less signatures than requested for transaction {tx}. Merchant received payment, but still marked as unpaid.", invoice.Id);
-            //TODO: Pay partially
+
+            // Save FailedTransaction for manual recovery
+            await using var dbCtx = _cashuDbContextFactory.CreateContext();
+            await dbCtx.FailedTransactions.AddAsync(ftx);
+            await dbCtx.SaveChangesAsync();
+
+            _logs.PayServer.LogError(
+                "(Cashu) Mint returned less signatures than requested for transaction {tx}. Saved as failed transaction for recovery. Merchant received payment, but some proofs may be recoverable.",
+                invoice.Id
+            );
+            //TODO: Pay partially or retry to recover missing proofs
         }
-        await AddProofsToDb(swapResult.ResultProofs, invoice.StoreId, token.Mint);
         await RegisterCashuPayment(invoice, handler, Money.Satoshis(tokenSatoshiWorth));
     }
-
 
     /// <summary>
     /// Handles melt operation with retry
     /// </summary>
     private async Task HandleMeltOperation(
-        CashuWallet wallet,
+        StatefulWallet wallet,
         InvoiceEntity invoice,
         StoreData store,
         CashuUtils.SimplifiedCashuToken token,
         CashuPaymentMethodHandler handler,
         decimal unitPrice,
-        CashuFeeConfig feeConfig)
+        CashuFeeConfig feeConfig
+    )
     {
         if (!wallet.HasLightningClient)
         {
             _logs.PayServer.LogError("Could not find lightning client!");
             throw new CashuPluginException("Could not find lightning client!");
         }
-        
+
+        // Pre-validate keyset ownership before melt to avoid losing funds on conflict
+        try
+        {
+            var inputKeysetIds = token.Proofs.Select(p => p.Id).Distinct().ToList();
+            await _mintManager.ValidateKeysetOwnership(token.Mint, inputKeysetIds);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logs.PayServer.LogError("(Cashu) Keyset ID conflict detected before melt: {msg}", ex.Message);
+            throw new CashuPaymentException("Token rejected: keyset ID conflict detected. Funds were not spent.", ex);
+        }
+
         List<GetKeysetsResponse.KeysetItemResponse> keysets;
         try
         {
@@ -350,115 +443,136 @@ public class CashuPaymentService
             _logs.PayServer.LogError("(Cashu) Couldn't get keysets. Funds weren't spent.");
             throw new CashuPaymentException("Could not get keysets!", ex);
         }
-        
-        var meltQuoteResponse = await wallet.CreateMeltQuote(token, unitPrice, keysets);
+
+        var meltQuoteResponse = await wallet.CreateMaxMeltQuote(token, unitPrice, keysets);
         if (!meltQuoteResponse.Success)
         {
-            _logs.PayServer.LogError("Could not create melt quote!" );
+            _logs.PayServer.LogError("Could not create melt quote!");
             if (meltQuoteResponse.Error != null)
             {
-                _logs.PayServer.LogError("Exception: {ex}", meltQuoteResponse.Error );
+                _logs.PayServer.LogError("Exception: {ex}", meltQuoteResponse.Error);
             }
             throw new CashuPaymentException("Could not create melt quote!");
         }
-        
-        if (!CashuUtils.ValidateFees(token.Proofs, feeConfig, meltQuoteResponse.KeysetFee!.Value, (ulong)meltQuoteResponse.MeltQuote!.FeeReserve))
+
+        if (
+            !CashuUtils.ValidateFees(
+                token.Proofs,
+                feeConfig,
+                meltQuoteResponse.KeysetFee!.Value,
+                (ulong)meltQuoteResponse.MeltQuote!.FeeReserve
+            )
+        )
         {
-            _logs.PayServer.LogError("(Cashu) Fees bigger than configured limit! Lightning fee: {ln}, keyset fee: {keysetfee}.", (ulong)meltQuoteResponse.MeltQuote!.FeeReserve, meltQuoteResponse.KeysetFee!.Value);
+            _logs.PayServer.LogError(
+                "(Cashu) Fees bigger than configured limit! Lightning fee: {ln}, keyset fee: {keysetfee}.",
+                (ulong)meltQuoteResponse.MeltQuote!.FeeReserve,
+                meltQuoteResponse.KeysetFee!.Value
+            );
             throw new CashuPaymentException("Fees are too big.");
         }
-        
+
         _logs.PayServer.LogInformation(
-            "(Cashu) Melt operation started. Invoice: {InvoiceId}, LightningFee: {LightningFee}, KeysetFee: {KeysetFee}", 
-            invoice.Id, 
-            meltQuoteResponse.MeltQuote.FeeReserve, 
+            "(Cashu) Melt operation started. Invoice: {InvoiceId}, LightningFee: {LightningFee}, KeysetFee: {KeysetFee}",
+            invoice.Id,
+            meltQuoteResponse.MeltQuote.FeeReserve,
             meltQuoteResponse.KeysetFee
         );
-        
+
         var meltResponse = await wallet.Melt(meltQuoteResponse.MeltQuote, token.Proofs);
-        
+
         if (meltResponse.Success)
         {
-            var lnInvPaid = await wallet.ValidateLightningInvoicePaid(meltQuoteResponse.Invoice?.Id);
-            
+            var lnInvPaid = await wallet.ValidateLightningInvoicePaid(
+                meltQuoteResponse.Invoice?.Id
+            );
+
             if (!lnInvPaid)
             {
                 var ftx = new FailedTransaction
                 {
-                    StoreId = invoice.StoreId,                 
+                    StoreId = invoice.StoreId,
                     InvoiceId = invoice.Id,
-                    LastRetried = DateTimeOffset.Now.ToUniversalTime(),
+                    LastRetried = DateTimeOffset.UtcNow,
                     MintUrl = token.Mint,
                     Unit = token.Unit,
-                    UsedProofs = StoredProof.FromBatch(token.Proofs, invoice.StoreId).ToList(),
+                    InputProofs = token.Proofs.ToArray(),
                     OperationType = OperationType.Melt,
                     OutputData = meltResponse.BlankOutputs,
                     MeltDetails = new MeltDetails
                     {
-                        Expiry = DateTimeOffset.FromUnixTimeSeconds(meltQuoteResponse.MeltQuote.Expiry),
+                        // if it's null it means it's already paid or expired
+                        Expiry = DateTimeOffset.FromUnixTimeSeconds(
+                            meltQuoteResponse.MeltQuote.Expiry ?? DateTime.Now.UnixTimestamp()
+                        ),
                         LightningInvoiceId = meltQuoteResponse.Invoice!.Id,
                         MeltQuoteId = meltResponse.Quote!.Quote,
-                        //Assert status as pending, even if it's paid - lightning invocie has to be paid 
-                        Status = "PENDING"
+                        // Assert status as pending, even if it's paid - lightning invoice has to be paid
+                        Status = "PENDING",
                     },
                     RetryCount = 1,
-                    Details = "Mint marked melt quote as paid, but lightning invoice is still unpaid.",
+                    Details =
+                        "Mint marked melt quote as paid, but lightning invoice is still unpaid.",
                 };
                 await using var ctx = _cashuDbContextFactory.CreateContext();
                 ctx.FailedTransactions.Add(ftx);
                 await ctx.SaveChangesAsync();
-                _logs.PayServer.LogError("(Cashu) Mint marked melt quote as paid, but lightning invoice is still unpaid. Please verify transaction manually.");
-                throw new CashuPaymentException($"There was a problem processing your request. Please contact the merchant with corresponding invoice Id: {invoice.Id}");
+                _logs.PayServer.LogError(
+                    "(Cashu) Mint marked melt quote as paid, but lightning invoice is still unpaid. Please verify transaction manually."
+                );
+                throw new CashuPaymentException(
+                    $"There was a problem processing your request. Please contact the merchant with corresponding invoice Id: {invoice.Id}"
+                );
             }
 
+            var amountMelted = Money.Satoshis(
+                meltQuoteResponse.Invoice.Amount.ToUnit(LightMoneyUnit.Satoshi)
+            );
+            var overpaidFeesReturned = Money.Satoshis(
+                meltResponse.ChangeProofs?.Select(p => p.Amount).Sum() * unitPrice ?? 0
+            );
+            var amountPaid = amountMelted + overpaidFeesReturned;
 
-            var amountMelted = Money.Satoshis(meltQuoteResponse.Invoice.Amount.ToUnit(LightMoneyUnit.Satoshi));
-            var overpaidFeesReturned = Money.Satoshis(meltResponse.ChangeProofs?.Select(p=>p.Amount).Sum()*unitPrice??0);
-            var amountPaid =  amountMelted + overpaidFeesReturned; 
-            
-            //add overpaid ln fees proofs to the db and register payment
-            await AddProofsToDb(meltResponse.ChangeProofs, store.Id, token.Mint);
-            await RegisterCashuPayment(invoice, handler, amountPaid); 
-            
+            await RegisterCashuPayment(invoice, handler, amountPaid);
+
             _logs.PayServer.LogInformation(
-                "(Cashu) Melt operation success. Melted: {amountMelted} sat, Overpaid lightning fees returned: {overpaidFeesReturned} sat. Total: {total} sat", 
-                amountMelted.Satoshi, 
-                overpaidFeesReturned.Satoshi, 
+                "(Cashu) Melt operation success. Melted: {amountMelted} sat, Overpaid lightning fees returned: {overpaidFeesReturned} sat. Total: {total} sat",
+                amountMelted.Satoshi,
+                overpaidFeesReturned.Satoshi,
                 amountPaid.Satoshi
             );
+            return;
         }
 
         if (meltResponse.Error is CashuProtocolException)
         {
-            _logs.PayServer.LogError(
-                "(Cashu) Melt Error: {Error}",meltResponse.Error.Message 
-            );
+            _logs.PayServer.LogError("(Cashu) Melt Error: {Error}", meltResponse.Error.Message);
             throw new CashuPaymentException("Could not process melt!");
-            
-            
         }
 
         if (meltResponse.Error is HttpRequestException)
         {
             var ftx = new FailedTransaction
             {
-                StoreId = store.Id,                 
+                StoreId = store.Id,
                 InvoiceId = invoice.Id,
-                LastRetried = DateTimeOffset.Now.ToUniversalTime(),
+                LastRetried = DateTimeOffset.UtcNow,
                 MintUrl = token.Mint,
                 Unit = token.Unit,
-                UsedProofs = StoredProof.FromBatch(token.Proofs, store.Id).ToList(),
+                InputProofs = token.Proofs.ToArray(),
                 OperationType = OperationType.Melt,
                 OutputData = meltResponse.BlankOutputs,
                 MeltDetails = new MeltDetails
                 {
-                    Expiry = DateTimeOffset.FromUnixTimeSeconds(meltQuoteResponse.MeltQuote.Expiry),
+                    Expiry = DateTimeOffset.FromUnixTimeSeconds(
+                        meltQuoteResponse.MeltQuote.Expiry ?? DateTime.Now.UnixTimestamp()
+                    ),
                     LightningInvoiceId = meltQuoteResponse.Invoice!.Id,
                     MeltQuoteId = meltResponse.Quote!.Quote,
-                    //Assert status as pending, even if it's paid - lightning invoice has to be paid 
-                    Status = "PENDING"
+                    // Assert status as pending, even if it's paid - lightning invoice has to be paid
+                    Status = "PENDING",
                 },
-                RetryCount = 1
+                RetryCount = 1,
             };
             try
             {
@@ -468,9 +582,9 @@ public class CashuPaymentService
                 {
                     throw new CashuPaymentException("Could not process melt!");
                 }
-                
+
                 var failedMeltState = await PollFailedMelt(ftx, store, handler);
-                
+
                 if (failedMeltState.State == CashuPaymentState.Failed)
                 {
                     throw new CashuPaymentException("Could not process melt!");
@@ -478,22 +592,86 @@ public class CashuPaymentService
             }
             catch (HttpRequestException)
             {
-                _logs.PayServer.LogError("Network error occured while processing melt {txId}. Please verify transaction manually", invoice.Id);
-                await wallet.CheckTokenState(token.Proofs);
-                var db = _cashuDbContextFactory.CreateContext();
+                _logs.PayServer.LogError(
+                    "Network error occured while processing melt {txId}. Please verify transaction manually",
+                    invoice.Id
+                );
+                await using var db = _cashuDbContextFactory.CreateContext();
                 await db.FailedTransactions.AddAsync(ftx);
                 await db.SaveChangesAsync();
             }
         }
+        else if (meltResponse.ChangeProofs != null)
+        {
+            // melt succeeded at mint level (LN invoice paid) but SaveProofs failed due to db error.
+            // changeProofs being populated means the mint completed the melt.
+            var lnInvPaid = await wallet.ValidateLightningInvoicePaid(
+                meltQuoteResponse.Invoice?.Id
+            );
+
+            if (lnInvPaid)
+            {
+                var amountMelted = Money.Satoshis(
+                    meltQuoteResponse.Invoice.Amount.ToUnit(LightMoneyUnit.Satoshi)
+                );
+                await RegisterCashuPayment(invoice, handler, amountMelted);
+
+                _logs.PayServer.LogWarning(
+                    "(Cashu) Melt succeeded at mint but SaveProofs failed. Invoice: {InvoiceId}. Change proofs lost. Error: {Error}",
+                    invoice.Id,
+                    meltResponse.Error?.Message
+                );
+            }
+
+            // Save FailedTransaction for lost change proofs
+            var ftx = new FailedTransaction
+            {
+                StoreId = store.Id,
+                InvoiceId = invoice.Id,
+                LastRetried = DateTimeOffset.UtcNow,
+                MintUrl = token.Mint,
+                Unit = token.Unit,
+                InputProofs = token.Proofs.ToArray(),
+                OperationType = OperationType.Melt,
+                OutputData = meltResponse.BlankOutputs,
+                MeltDetails = new MeltDetails
+                {
+                    Expiry = DateTimeOffset.FromUnixTimeSeconds(
+                        meltQuoteResponse.MeltQuote.Expiry ?? DateTime.Now.UnixTimestamp()
+                    ),
+                    LightningInvoiceId = meltQuoteResponse.Invoice!.Id,
+                    MeltQuoteId = meltResponse.Quote!.Quote,
+                    Status = lnInvPaid ? "PAID" : "PENDING",
+                },
+                RetryCount = 1,
+                Details = $"Melt succeeded at mint but local SaveProofs failed. Error: {meltResponse.Error?.Message}",
+            };
+            await using var ctx = _cashuDbContextFactory.CreateContext();
+            ctx.FailedTransactions.Add(ftx);
+            await ctx.SaveChangesAsync();
+        }
+        else
+        {
+            _logs.PayServer.LogError(
+                "(Cashu) Unexpected melt error: {Error}",
+                meltResponse.Error?.Message
+            );
+            throw new CashuPaymentException("Could not process melt!");
+        }
     }
-    
-    public async Task RegisterCashuPayment(InvoiceEntity invoice, CashuPaymentMethodHandler handler, Money amount, bool markPaid = true)
+
+    public async Task RegisterCashuPayment(
+        InvoiceEntity invoice,
+        CashuPaymentMethodHandler handler,
+        Money amount,
+        bool markPaid = true
+    )
     {
         //set payment method fee to 0 so it won't be added to due for second time
         var prompt = invoice.GetPaymentPrompt(CashuPlugin.CashuPmid);
         prompt.PaymentMethodFee = 0.0m;
         await _invoiceRepository.UpdatePrompt(invoice.Id, prompt);
-        
+
         var paymentData = new PaymentData
         {
             Id = Guid.NewGuid().ToString(),
@@ -502,9 +680,9 @@ public class CashuPaymentService
             Currency = "BTC",
             InvoiceDataId = invoice.Id,
             Amount = amount.ToDecimal(MoneyUnit.BTC),
-            PaymentMethodId = handler.PaymentMethodId.ToString()
+            PaymentMethodId = handler.PaymentMethodId.ToString(),
         }.Set(invoice, handler, new CashuPaymentData());
-        
+
         var payment = await _paymentService.AddPayment(paymentData);
         if (markPaid)
         {
@@ -512,15 +690,14 @@ public class CashuPaymentService
         }
     }
 
-
-
     private ILightningClient GetStoreLightningClient(StoreData store, BTCPayNetwork network)
     {
         var lightningPmi = PaymentTypes.LN.GetPaymentMethodId(network.CryptoCode);
 
         var lightningConfig = store.GetPaymentMethodConfig<LightningPaymentMethodConfig>(
             lightningPmi,
-            _handlers);
+            _handlers
+        );
 
         if (lightningConfig == null)
             throw new PaymentMethodUnavailableException("Lightning not configured");
@@ -528,35 +705,42 @@ public class CashuPaymentService
         return lightningConfig.CreateLightningClient(
             network,
             _lightningNetworkOptions.Value,
-            _lightningClientFactoryService);
+            _lightningClientFactoryService
+        );
     }
 
-    public async Task AddProofsToDb(IEnumerable<Proof>? proofs, string storeId, string mintUrl)
+    public async Task AddProofsToDb(
+        IEnumerable<Proof>? proofs,
+        string storeId,
+        string mintUrl,
+        ProofState status
+    )
     {
         if (proofs == null)
         {
             return;
         }
-        
+
         var enumerable = proofs as Proof[] ?? proofs.ToArray();
-        
+
         if (enumerable.Length == 0)
         {
             return;
         }
         
-        await using var dbContext = _cashuDbContextFactory.CreateContext();
-        
-        if (!dbContext.Mints.Any(m => m.Url == mintUrl)) dbContext.Mints.Add(new Mint(mintUrl));
+        await _mintManager.GetOrCreateMint(mintUrl);
 
-        var dbProofs = StoredProof.FromBatch(enumerable, storeId);
+        await using var dbContext = _cashuDbContextFactory.CreateContext();
+        var dbProofs = StoredProof.FromBatch(enumerable, storeId, status);
         dbContext.Proofs.AddRange(dbProofs);
 
         await dbContext.SaveChangesAsync();
     }
-    
-    
-    private CashuPaymentState CompareMeltQuotes(MeltDetails prevMeltState, PostMeltQuoteBolt11Response currentMeltState)
+
+    private CashuPaymentState CompareMeltQuotes(
+        MeltDetails prevMeltState,
+        PostMeltQuoteBolt11Response currentMeltState
+    )
     {
         //Shouldn't happen
         if (prevMeltState.Status == "PAID")
@@ -579,20 +763,22 @@ public class CashuPaymentService
 
         if (currentMeltState.State == "PENDING")
         {
-            //isn't paid, but it will be 
+            //isn't paid, but it will be
             return CashuPaymentState.Pending;
         }
-        
+
         //if it's unpaid and it was unpaid let's assume it's pending untill timeout
         if (currentMeltState.State == "UNPAID")
         {
-            return prevMeltState.Expiry <= new DateTimeOffset(DateTime.Now) ? CashuPaymentState.Failed : CashuPaymentState.Pending;
+            return prevMeltState.Expiry <= new DateTimeOffset(DateTime.Now)
+                ? CashuPaymentState.Failed
+                : CashuPaymentState.Pending;
         }
-        
+
         return CashuPaymentState.Failed;
     }
-    
-    private async Task EnsureTokenSpendable(CashuWallet wallet, List<Proof> proofs)
+
+    private async Task EnsureTokenSpendable(StatefulWallet wallet, List<Proof> proofs)
     {
         StateResponseItem.TokenState? tokenState = null;
         try
@@ -613,73 +799,80 @@ public class CashuPaymentService
                 return;
         }
     }
-    
-    public async Task<PollResult> PollFailedMelt(FailedTransaction ftx, StoreData storeData, CashuPaymentMethodHandler handler, CancellationToken cts = default)
+
+    public async Task<PollResult> PollFailedMelt(
+        FailedTransaction ftx,
+        StoreData storeData,
+        CashuPaymentMethodHandler handler,
+        CancellationToken cts = default
+    )
     {
-        if (ftx.OperationType != OperationType.Melt || ftx.MeltDetails==null)
+        if (ftx.OperationType != OperationType.Melt || ftx.MeltDetails == null)
         {
             throw new InvalidOperationException($"Unexpected operation type: {ftx.OperationType}");
         }
         var lightningClient = GetStoreLightningClient(storeData, handler.Network);
         var lnInvoice = await lightningClient.GetInvoice(ftx.MeltDetails.LightningInvoiceId, cts);
-        
+
         if (lnInvoice.Status == LightningInvoiceStatus.Expired)
         {
-            return new PollResult()
-            {
-                State = CashuPaymentState.Failed
-            };
+            return new PollResult() { State = CashuPaymentState.Failed };
         }
 
         //If the invoice is paid, we should process the payment, even though if change isn't received.
         if (lnInvoice.Status == LightningInvoiceStatus.Paid)
         {
-            var wallet = new CashuWallet(ftx.MintUrl, ftx.Unit);
+            var wallet = await _statefulWalletFactory.CreateAsync(
+                ftx.StoreId,
+                ftx.MintUrl,
+                ftx.Unit
+            );
 
             try
             {
-                var meltQuoteState = await wallet.CheckMeltQuoteState(ftx.MeltDetails.MeltQuoteId, cts);
+                var meltQuoteState = await wallet.CheckMeltQuoteState(
+                    ftx.MeltDetails.MeltQuoteId,
+                    cts
+                );
                 var status = CompareMeltQuotes(ftx.MeltDetails, meltQuoteState);
                 if (status == CashuPaymentState.Success)
-                {   
+                {
                     //Change won't be always present
-                    if (meltQuoteState.Change == null)
+                    if (meltQuoteState.Change == null || meltQuoteState.Change.Length == 0)
                     {
-                        return new PollResult()
-                        {
-                            State = CashuPaymentState.Success
-                        };
+                        return new PollResult() { State = CashuPaymentState.Success };
                     }
-                    var keys = await wallet.GetKeys(meltQuoteState.Change.First().Id);
-                    var proofs = CashuUtils.CreateProofs(meltQuoteState.Change, ftx.OutputData.BlindingFactors,
-                        ftx.OutputData.Secrets, keys);
+                    var firstChange = meltQuoteState.Change.FirstOrDefault();
+                    if (firstChange == null)
+                    {
+                        return new PollResult() { State = CashuPaymentState.Success };
+                    }
+                    var keys = await wallet.GetKeys(firstChange.Id);
+                    if (keys == null)
+                    {
+                        return new PollResult() { State = CashuPaymentState.Success };
+                    }
+                    var proofs = DotNut.Abstractions.Utils.ConstructProofsFromPromises(
+                        meltQuoteState.Change.ToList(),
+                        ftx.OutputData,
+                        keys
+                    );
                     return new PollResult()
                     {
                         State = CashuPaymentState.Success,
-                        ResultProofs = proofs
+                        ResultProofs = proofs,
                     };
                 }
 
-                return new PollResult()
-                {
-                    State = status
-                };
+                return new PollResult() { State = status };
             }
             catch (HttpRequestException ex)
             {
-                return new PollResult()
-                {
-                    State = CashuPaymentState.Pending,
-                    Error = ex
-                };
+                return new PollResult() { State = CashuPaymentState.Pending, Error = ex };
             }
             catch (Exception ex)
             {
-                return new PollResult()
-                {
-                    State = CashuPaymentState.Unknown,
-                    Error = ex
-                };
+                return new PollResult() { State = CashuPaymentState.Unknown, Error = ex };
             }
         }
 
@@ -689,35 +882,48 @@ public class CashuPaymentService
         }
 
         return new PollResult() { State = CashuPaymentState.Pending };
-        
     }
 
-    public async Task<PollResult> PollFailedSwap(FailedTransaction ftx, StoreData storeData, CancellationToken cts = default)
+    public async Task<PollResult> PollFailedSwap(
+        FailedTransaction ftx,
+        StoreData storeData,
+        CancellationToken cts = default
+    )
     {
         if (ftx.OperationType != OperationType.Swap)
         {
             throw new InvalidOperationException($"Unexpected operation type: {ftx.OperationType}");
         }
-        var wallet = new CashuWallet(ftx.MintUrl, ftx.Unit);
+
+        var wallet = await _statefulWalletFactory.CreateAsync(ftx.StoreId, ftx.MintUrl, ftx.Unit);
         try
         {
-            //first check if token is spent. if not - don't care
-            var tokenState = await wallet.CheckTokenState(ftx.UsedProofs);
+            // Check if token is spent - if not, swap failed for 100%
+            var tokenState = await wallet.CheckTokenState(ftx.InputProofs.ToList());
             if (tokenState == StateResponseItem.TokenState.UNSPENT)
             {
-                return new PollResult()
-                {
-                    State = CashuPaymentState.Failed,
-                };
+                return new PollResult() { State = CashuPaymentState.Failed };
             }
-            
+
             //try to restore proofs
-            var response = await wallet.RestoreProofsFromInputs(ftx.OutputData.BlindedMessages.ToArray(), cts);
-            if (response.Signatures.Length == ftx.OutputData.BlindedMessages.Length)
+            var response = await wallet.RestoreProofsFromInputs(
+                ftx.OutputData.Select(o => o.BlindedMessage).ToArray(),
+                cts
+            );
+            if (response.Signatures.Length == ftx.OutputData.Count)
             {
-                var keysetId = response.Signatures.First().Id;
+                var firstSignature = response.Signatures.FirstOrDefault();
+                if (firstSignature == null)
+                {
+                    return new PollResult { State = CashuPaymentState.Failed };
+                }
+                var keysetId = firstSignature.Id;
                 var keys = await wallet.GetKeys(keysetId);
-                var proofs = CashuUtils.CreateProofs(response.Signatures, ftx.OutputData.BlindingFactors, ftx.OutputData.Secrets, keys);
+                var proofs = DotNut.Abstractions.Utils.ConstructProofsFromPromises(
+                    response.Signatures.ToList(),
+                    ftx.OutputData,
+                    keys
+                );
                 return new PollResult()
                 {
                     ResultProofs = proofs,
@@ -728,29 +934,20 @@ public class CashuPaymentService
             return new PollResult()
             {
                 State = CashuPaymentState.Failed,
-                Error = new CashuPluginException("Swap inputs and outputs aren't balanced!")
+                Error = new CashuPluginException("Swap inputs and outputs aren't balanced!"),
             };
         }
         catch (Exception ex)
         {
-            return new PollResult
-            {
-                State = CashuPaymentState.Unknown,
-                Error = ex,
-            };
+            return new PollResult { State = CashuPaymentState.Unknown, Error = ex };
         }
-        
     }
 
     public class PollResult
     {
         public bool Success => State == CashuPaymentState.Success;
         public CashuPaymentState State { get; set; }
-        public Proof[]? ResultProofs { get; set; }
+        public List<Proof>? ResultProofs { get; set; }
         public Exception? Error { get; set; }
     }
 }
-
-
-
-

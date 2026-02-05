@@ -1,0 +1,187 @@
+@using BTCPayServer
+@model BTCPayServer.Plugins.Cashu.ViewModels.WalletRestoreViewModel
+@{
+    Layout = "Views/UIStores/_LayoutWalletSetup";
+    ViewData["Title"] = "Restore your Cashu wallet";
+    var words = Model?.Words ?? Array.Empty<string>();
+}
+
+@section Navbar {
+    <a asp-controller="UICashuOnboarding" asp-action="GettingStarted" asp-route-storeId="@Context.GetStoreData().Id">
+        <vc:icon symbol="back" />
+    </a>
+}
+
+@section PageHeadContent {
+<style>
+    main { max-width: 800px; margin: 0 auto; text-align: center; }
+
+    .mnemonic-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.75rem;
+        margin: 2rem auto 1rem;
+    }
+
+    .mnemonic-word {
+        display: flex;
+        align-items: center;
+        border: 2px solid var(--btcpay-border-color);
+        border-radius: 6px;
+        background: var(--btcpay-backdrop-bg);
+        overflow: hidden;
+    }
+
+    .mnemonic-word .num-box {
+        flex-shrink: 0;
+        width: 2.3rem;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 0.9rem;
+        background: var(--btcpay-border-color);
+    }
+
+    .mnemonic-word input {
+        border: 0;
+        flex: 1;
+        padding: 0.4rem 0.6rem;
+        background: transparent;
+        outline: none;
+        font-family: var(--btcpay-font-monospace, monospace);
+    }
+    
+    .invalid-word.mnemonic-word {
+        border: 2px solid red;
+    }
+    
+    .invalid-word.mnemonic-word .num-box {
+        background: red;
+    }
+
+    .valid-word.mnemonic-word {
+        border: 2px solid var(--btcpay-green-700);
+    }
+    
+    .valid-word.mnemonic-word .num-box {
+        background: var(--btcpay-green-700);
+    }
+    
+    @@media (max-width: 768px) {
+        .mnemonic-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @@media (max-width: 480px) {
+        .mnemonic-grid { grid-template-columns: 1fr; }
+    }
+</style>
+}
+
+<main>
+    <header class="text-center">
+        <h1>@ViewData["Title"]</h1>
+        <p class="lead text-secondary mt-3" text-translate="true">
+            Enter your 12 word recovery phrase.
+        </p>
+    </header>
+
+    <div class="my-5">
+        @if (!User.IsInRole(Roles.ServerAdmin))
+        {
+            <div class="alert alert-warning">
+                You are not an admin on this server. While you are able to import or generate a wallet via seed with
+                your account, please understand that you are trusting the server admins not just with your
+                <a href="https://docs.btcpayserver.org/Deployment/ThirdPartyHosting/#privacy-concerns"
+                   target="_blank" class="alert-link" rel="noreferrer noopener">privacy</a>
+                but also with
+                <a href="https://docs.btcpayserver.org/Deployment/ThirdPartyHosting/#trust-concerns"
+                   target="_blank" class="alert-link" rel="noreferrer noopener">trivial access to your funds.</a>
+            </div>
+        }
+
+        <form asp-controller="UICashuOnboarding" asp-action="Restore" asp-route-storeId="@ViewContext.RouteData.Values["storeId"]" method="post">
+            <input type="hidden" asp-for="Mnemonic" />
+
+            <div class="form-group mb-4">
+                <label class="form-label" text-translate="true">Enter your 12 word recovery phrase</label>
+
+                <div class="mnemonic-grid" id="mnemonic-grid">
+                    @for (var i = 0; i < 12; i++)
+                    {
+                        <div class="mnemonic-word @(String.IsNullOrEmpty(Model.Mnemonic) ? "" : Model.InvalidWordIndices.Contains(i) ? "invalid-word" : "valid-word" )">
+                            <div class="num-box">@(i + 1)</div>
+                            <input type="text"
+                                   class="form-control border-0 shadow-none"
+                                   autocomplete="off"
+                                   autocorrect="off"
+                                   autocapitalize="off"
+                                   spellcheck="false"
+                                   data-index="@i"
+                                   value="@(i < words.Count ? words[i] : "")"/>
+                        </div>
+                    }
+                </div>
+                <span asp-validation-for="Mnemonic" class="text-danger"></span>
+            </div>
+
+            <div class="form-group">
+                <label asp-for="MintUrls" class="form-label" text-translate="true">Your mints</label>
+                <textarea asp-for="MintUrls"
+                          class="form-control font-monospace py-2"
+                          rows="3"
+                          autocomplete="off"
+                          autocorrect="off"
+                          autocapitalize="off"
+                          placeholder="https://mint.example.com"></textarea>
+                <small class="form-text text-muted">
+                    Enter your mint URLs, one per line or separated by spaces. These are needed to recover your balances.
+                </small>
+                <span asp-validation-for="MintUrls" class="text-danger"></span>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-lg mt-4 px-5" id="proceed">Restore</button>
+        </form>
+    </div>
+</main>
+
+@section PageFootContent {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        const wordInputs = document.querySelectorAll('#mnemonic-grid input[data-index]');
+        const hiddenMnemonic = document.querySelector('input[name="Mnemonic"]');
+        const proceedBtn = document.getElementById('proceed');
+
+        function updateMnemonic() {
+            const words = Array.from(wordInputs)
+                .map(i => i.value.trim())
+                .filter(w => w.length > 0);
+
+            hiddenMnemonic.value = words.join(' ');
+
+            if (words.length >= 12) {
+                proceedBtn.removeAttribute('disabled');
+            } else {
+                proceedBtn.setAttribute('disabled', 'disabled');
+            }
+        }
+
+        wordInputs.forEach(i => {
+            i.addEventListener('input', updateMnemonic);
+
+            i.addEventListener('paste', (e) => {
+                e.preventDefault();
+                const paste = (e.clipboardData || window.clipboardData).getData('text');
+                const words = paste.trim().split(/\s+/);
+
+                wordInputs.forEach((input, index) => {
+                    input.value = words[index] || '';
+                });
+
+                updateMnemonic();
+            });
+        });
+
+        proceedBtn.setAttribute('disabled', 'disabled');
+    </script>
+}

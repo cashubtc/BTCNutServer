@@ -10,12 +10,12 @@ public class Mint
     {
         this.Url = url;
     }
-    
+
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public int Id { get; set; }
-    
+
     public string Url { get; set; }
-    
+
     public ICollection<MintKeys> Keysets { get; }
 }

@@ -1,66 +1,173 @@
 @using BTCPayServer.Abstractions.Extensions
 @using BTCPayServer.Plugins.Cashu
 @using BTCPayServer.Plugins.Cashu.Data.enums
-@using Microsoft.AspNetCore.Mvc.TagHelpers
 @model BTCPayServer.Plugins.Cashu.ViewModels.CashuStoreViewModel
 @{
-    ViewData.SetActivePage(CashuPlugin.PluginNavKey, "Cashu Configuration", "Configuration");
+ViewData.SetActivePage(CashuPlugin.PluginNavKey, "Cashu Configuration", "Configuration");
 }
+<style>
+    .img-dark { display: none; }
+    .img-light { display: inline; }
+    @@media (prefers-color-scheme: dark) {
+        .img-light { display: none; }
+        .img-dark  { display: inline; }
+    }
+    .mode-info {
+        display: none;
+    }
+    #trusted-mints-input {
+        display: none;
+    }
+</style>
 
-<form method="post">
-    <div class="sticky-header d-flex align-items-center justify-content-between">
-        <h2 class="mb-0">@ViewData["Title"]</h2>
-        <input type="submit" class="btn btn-primary" value="Submit" />
-    </div>
+<div class="sticky-header d-flex align-items-center justify-content-between">
+    <h2 class="mb-0">@ViewData["Title"]</h2>
+</div>
 
-    <partial name="_StatusMessage" />
-    
-    <div class="row">
-        <div class="col-md-8">
-            
-            <div class="form-group my-4">
-                <div class="d-flex align-items-center">
+<partial name="_StatusMessage" />
+
+<form asp-controller="UICashuStores" asp-action="StoreConfig" method="post">
+    <div style="max-width: 960px;">
+        <p class="w-auto">
+            Decide how your store will handle incoming ecash payments. You can select one of the following acceptance modes to control how ecash from different mints is processed. Each mode balances flexibility, custody, and risk differently. You can update this setting anytime in your wallet preferences.
+        </p>
+        <p>
+            Please understand that Cashu is still under active development and considered experimental. Before you proceed, take time to familiarize yourself with the risks.
+            <a href="https://docs.cashu.space" target="_blank" rel="noreferrer">More information.</a>
+        </p>
+
+        <div class="mb-4">
+            <div class="form-group">
+                <div class="d-flex align-items-center mb-3">
                     <input asp-for="Enabled" type="checkbox" class="btcpay-toggle me-3"/>
-                    <label asp-for="Enabled" class="form-check-label"></label>
+                    <label asp-for="Enabled" class="form-check-label">Enable Cashu payments</label>
                 </div>
                 <span asp-validation-for="Enabled" class="text-danger"></span>
             </div>
+        </div>
 
-            @if (Model.Enabled)
-            {
-                <div class="form-group my-4">
-                    <label>Payment Acceptance Model:</label>
-                    <select asp-for="PaymentAcceptanceModel" class="form-select">
-                        <option value=@CashuPaymentModel.MeltImmediately>Accept from any mint, melt immediately</option>
-                        <option value="@CashuPaymentModel.SwapAndHodl">Accept from trusted mints, melt occasionally</option>
-                    </select>
+        @if (Model.Enabled)
+        {
+            <div class="mb-4">
+                <p><strong>Choose your acceptance mode:</strong></p>
+                <div class="btcpay-pills d-flex flex-row gap-3">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input visually-hidden"
+                               type="radio"
+                               asp-for="PaymentAcceptanceModel"
+                               value="@CashuPaymentModel.AutoConvert"
+                               id="autoConvert"
+                               disabled="@(!Model.HasLightningNodeConnected)"/>
+                        <label class="form-check-label btcpay-pill" for="autoConvert">
+                            Auto Convert
+                        </label>
+                    </div>
+                    
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input visually-hidden"
+                               type="radio"
+                               asp-for="PaymentAcceptanceModel"
+                               value="@CashuPaymentModel.HoldWhenTrusted"
+                               id="holdWhenTrusted"
+                               disabled="@(!Model.HasLightningNodeConnected)"/>
+                        <label class="form-check-label btcpay-pill" for="holdWhenTrusted">
+                            Hold When Trusted
+                        </label>
+                    </div>
+                    
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input visually-hidden"
+                               type="radio"
+                               asp-for="PaymentAcceptanceModel"
+                               value="@CashuPaymentModel.TrustedMintsOnly"
+                               id="trustedMintsOnly"/>
+                        <label class="form-check-label btcpay-pill" for="trustedMintsOnly">
+                            Trusted Mints Only
+                        </label>
+                    </div>
+                    
+                </div>
+            </div>
+
+            <div class="mb-4" id="acceptance-mode-info">
+
+                <div class="mode-info" data-mode="TrustedMintsOnly">
+                    <p class="mb-2">
+                        Payments are only accepted from the mints you've approved as trusted.
+                        All incoming ecash from these mints will be stored in your wallet as ecash tokens.
+                    </p>
                 </div>
 
-                <div class="form-group my-4">
-                    <label>Trusted Mints URLs:</label>
-                    <textarea asp-for="TrustedMintsUrls" rows="4" class="form-control"></textarea>
-                    <small>Enter each trusted mint URL on a new line.</small>
+                <div class="mode-info" data-mode="HoldWhenTrusted">
+                    <p class="mb-2">
+                        Ecash from mints you've marked as trusted will be stored in your wallet as ecash tokens.
+                        Ecash from all other mints will be automatically converted to bitcoin.
+                    </p>
+                    <img src="~/Resources/img/payment-flow-light.svg"
+                         class="img-light mt-2"
+                         style="max-width:100%;" />
+                    <img src="~/Resources/img/payment-flow-dark.svg"
+                         class="img-dark mt-2"
+                         style="max-width:100%;" />
                 </div>
-                
-                <div class="form-group my-4">
-                    <div class="form-group " >
-                        <label>Customer fee advance (sat)</label>
-                        <input type="number" asp-for="CustomerFeeAdvance" class="form-control" />
-                    </div>
-                    <div class="form-group">
-                        <label>Maximum lightning fee we want to cover (%):</label>
-                        <input type="number" asp-for="MaxLightningFee" class="form-control"/>
-                    </div>
-                    <div class="form-group">
-                        <label>Maximum allowed mint fee (%)</label>
-                        <input type="number" asp-for="MaxKeysetFee" class="form-control"/>
-                    </div>
+
+                <div class="mode-info" data-mode="AutoConvert">
+                    <p class="mb-2">
+                        All ecash you receive is instantly converted into Bitcoin
+                        and deposited into your Lightning node.
+                    </p>
+                    <img src="~/Resources/img/auto-convert-light.svg"
+                         class="img-light mt-2"
+                         style="max-width:100%;" />
+                    <img src="~/Resources/img/auto-convert-dark.svg"
+                         class="img-dark mt-2"
+                         style="max-width:100%;" />
                 </div>
-                <a class="btn btn-outline-info" href="cashu/FailedTransactions">Show interrupted transactions</a>
-            }
+            </div>
+            
+            <div id="trusted-mints-input">
+                <partial  name="_TrustedMintsInput" model="@Model.TrustedMintsUrls" />
+            </div>
+            
+        }
+        
+        <div class="mt-4">
+            <button type="submit" class="btn btn-primary">Save Configuration</button>
+            <a class="btn btn-outline-secondary" asp-action="Index">Cancel</a>
         </div>
     </div>
 </form>
+<script>
+    (function () {
+        const radios = document.querySelectorAll(
+            'input[name="PaymentAcceptanceModel"]'
+        );
+        const sections = document.querySelectorAll('.mode-info');
+        const trustedMintsInput = document.getElementById('trusted-mints-input');
 
+        function updateModeUI(value) {
+            sections.forEach(s => {
+                s.style.display = s.dataset.mode === value ? 'block' : 'none';
+            });
 
+            if (value === 'AutoConvert') {
+                trustedMintsInput.style.display = 'none';
+            } else {
+                trustedMintsInput.style.display = 'block';
+            }
+        }
 
+        radios.forEach(radio => {
+            radio.addEventListener('change', e => {
+                updateModeUI(e.target.value);
+            });
+        });
+
+        const checked = document.querySelector(
+            'input[name="PaymentAcceptanceModel"]:checked'
+        );
+        if (checked) {
+            updateModeUI(checked.value);
+        }
+    })();
+</script>
