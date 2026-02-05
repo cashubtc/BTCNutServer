@@ -177,23 +177,17 @@ public class CashuPaymentService
             simplifiedToken.Unit
         );
 
-        if (cashuPaymentMethodConfig.PaymentModel == CashuPaymentModel.AutoConvert)
+        var trusted = cashuPaymentMethodConfig.TrustedMintsUrls.Contains(simplifiedToken.Mint);
+        var (melt, swap) = cashuPaymentMethodConfig.PaymentModel switch
         {
-            await HandleMeltOperation(
-                wallet,
-                invoice,
-                storeData,
-                simplifiedToken,
-                handler as CashuPaymentMethodHandler,
-                singleUnitSatoshiWorth,
-                cashuPaymentMethodConfig.FeeConfing
-            );
-            return;
-        }
+            CashuPaymentModel.AutoConvert => (true, false),
+            CashuPaymentModel.HoldWhenTrusted => (!trusted, trusted),
+            CashuPaymentModel.TrustedMintsOnly => (false, trusted),
+            _ => throw new NotSupportedException(cashuPaymentMethodConfig.PaymentModel.ToString())
+        };
 
-        if (cashuPaymentMethodConfig.TrustedMintsUrls.Contains(simplifiedToken.Mint))
+        if (swap)
         {
-            await EnsureTokenSpendable(wallet, simplifiedToken.Proofs);
             await HandleSwapOperation(
                 wallet,
                 invoice,
@@ -204,36 +198,24 @@ public class CashuPaymentService
                 providedAmount.Satoshi,
                 cancellationToken
             );
-            return;
         }
-
-        switch (cashuPaymentMethodConfig.PaymentModel)
+        else if (melt)
         {
-            case CashuPaymentModel.HoldWhenTrusted:
-            {
-                await EnsureTokenSpendable(wallet, simplifiedToken.Proofs);
-                await HandleMeltOperation(
-                    wallet,
-                    invoice,
-                    storeData,
-                    simplifiedToken,
-                    handler as CashuPaymentMethodHandler,
-                    singleUnitSatoshiWorth,
-                    cashuPaymentMethodConfig.FeeConfing
-                );
-                return;
-            }
-            case CashuPaymentModel.TrustedMintsOnly:
-            {
-                throw new CashuPaymentException(
-                    "Can't process this payment. Merchant can't trust this mint."
-                );
-            }
-            case CashuPaymentModel.AutoConvert: // this should never happen
-            default:
-            {
-                throw new Exception("Unknown cashu payment model");
-            }
+            await HandleMeltOperation(
+                wallet,
+                invoice,
+                storeData,
+                simplifiedToken,
+                handler as CashuPaymentMethodHandler,
+                singleUnitSatoshiWorth,
+                cashuPaymentMethodConfig.FeeConfing
+            );
+        }
+        else
+        {
+            throw new CashuPaymentException(
+                "Payment from this mint is not supported. Please contact the merchant to resolve this issue."
+            );
         }
     }
 
@@ -776,28 +758,6 @@ public class CashuPaymentService
         }
 
         return CashuPaymentState.Failed;
-    }
-
-    private async Task EnsureTokenSpendable(StatefulWallet wallet, List<Proof> proofs)
-    {
-        StateResponseItem.TokenState? tokenState = null;
-        try
-        {
-            tokenState = await wallet.CheckTokenState(proofs);
-        }
-        catch (Exception ex)
-        {
-            throw new CashuPaymentException("Failed to check token state", ex);
-        }
-        switch (tokenState)
-        {
-            case StateResponseItem.TokenState.SPENT:
-                throw new CashuPaymentException("Token already spent");
-            case StateResponseItem.TokenState.PENDING:
-                throw new CashuPaymentException("Token already pending");
-            default:
-                return;
-        }
     }
 
     public async Task<PollResult> PollFailedMelt(
