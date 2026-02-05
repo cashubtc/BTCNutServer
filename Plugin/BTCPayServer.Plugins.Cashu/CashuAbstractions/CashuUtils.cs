@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
-using System.Security.Cryptography;
 using System.Threading.Tasks;
 using BTCPayServer.Lightning;
 using BTCPayServer.Plugins.Cashu.Errors;
@@ -11,9 +10,8 @@ using DotNut;
 using DotNut.Api;
 using DotNut.ApiModels;
 using NBitcoin;
-using NBitcoin.Secp256k1;
-using DLEQProof = DotNut.DLEQProof;
-using DotNut.NUT13;
+using Utils = DotNut.Abstractions.Utils;
+
 namespace BTCPayServer.Plugins.Cashu.CashuAbstractions;
 
 public static class CashuUtils
@@ -30,7 +28,7 @@ public static class CashuUtils
         var client = new HttpClient { BaseAddress = mintUri };
         //Some operations, like Melt can take a long time. But 5 minutes should be more than ok.
         client.Timeout = TimeSpan.FromMinutes(5);
-        var cashuClient = new CashuHttpClient(client);
+        var cashuClient = new CashuHttpClient(client, true);
         return cashuClient;
     }
 
@@ -61,13 +59,19 @@ public static class CashuUtils
 
         var cashuClient = GetCashuHttpClient(mint);
 
-        var mintQuote = await cashuClient.CreateMintQuote<PostMintQuoteBolt11Response, PostMintQuoteBolt11Request>(
-            "bolt11",
-            new PostMintQuoteBolt11Request { Amount = 1000, Unit = unit });
+        var mintQuote = await cashuClient.CreateMintQuote<
+            PostMintQuoteBolt11Response,
+            PostMintQuoteBolt11Request
+        >("bolt11", new PostMintQuoteBolt11Request { Amount = 1000, Unit = unit });
         var paymentRequest = mintQuote.Request;
 
-
-        if (!BOLT11PaymentRequest.TryParse(paymentRequest, out var parsedPaymentRequest, network))
+        if (
+            !BOLT11PaymentRequest.TryParse(
+                paymentRequest,
+                out var parsedPaymentRequest,
+                network
+            )
+        )
         {
             throw new Exception("Invalid BOLT11 payment request.");
         }
@@ -97,116 +101,34 @@ public static class CashuUtils
         }
 
         var proofs = token.Tokens.SelectMany(t => t.Proofs).ToList();
+        var firstToken = token.Tokens.FirstOrDefault();
+        if (firstToken == null)
+        {
+            throw new CashuPaymentException("Token contains no mint information.");
+        }
 
         return new SimplifiedCashuToken
         {
-            Mint = token.Tokens.First().Mint,
+            Mint = MintManager.NormalizeMintUrl(firstToken.Mint),
             Proofs = proofs,
             Memo = token.Memo,
-            Unit = token.Unit ?? "sat"
+            Unit = token.Unit ?? "sat",
         };
     }
 
     /// <summary>
-    /// Function choosing which proofs have to be spent in order to provide the correct value.
-    /// </summary>
-    /// <param name="proofs">User proofs</param>
-    /// <param name="amountToSend">Amount (in tokens unit!!)</param>
-    /// <returns>SendResponse containing proofs to keep and proofs to send.</returns>
-    public static SendResponse SelectProofsToSend(List<Proof> proofs, ulong amountToSend)
-    {
-        // Sort proofs in ascending order by amount
-        var sortedProofs = proofs.OrderBy(p => p.Amount).ToList();
-
-        // Separate proofs into two lists: smaller or equal to amountToSend, and bigger
-        var smallerProofs = sortedProofs
-            .Where(p => p.Amount <= amountToSend)
-            .OrderByDescending(p => p.Amount).ToList();
-        var biggerProofs = sortedProofs
-            .Where(p => p.Amount > amountToSend)
-            .OrderBy(p => p.Amount).ToList();
-        var nextBigger = biggerProofs.FirstOrDefault();
-
-        // If no smaller proofs exist but a bigger proof is available, send the bigger one
-        if (!smallerProofs.Any() && nextBigger != null)
-            return new SendResponse
-            {
-                Keep = proofs.Where(p => p.Secret != nextBigger.Secret).ToList(),
-                Send = [nextBigger]
-            };
-
-        // If no valid proofs are available, return all proofs as Keep
-        if (!smallerProofs.Any() && nextBigger == null)
-            return new SendResponse { Keep = proofs, Send = new List<Proof>() };
-
-        // Start selecting proofs with the largest possible proof first (it can be the exact amount)
-        var remainder = amountToSend;
-        var selectedProofs = new List<Proof> { smallerProofs[0] };
-
-        // Reduce the remainder amount by the selected proof amount
-        remainder -= selectedProofs[0].Amount;
-
-        // Recursively select additional proofs if needed
-        if (remainder > 0)
-        {
-            var recursiveResponse = SelectProofsToSend(smallerProofs.Skip(1).ToList(), remainder);
-            selectedProofs.AddRange(recursiveResponse.Send);
-        }
-
-        // If the selected proofs do not sum up to the required amount, use the next bigger proof
-        if (selectedProofs.Select(p => p.Amount).Sum() < amountToSend && nextBigger != null)
-            selectedProofs = [nextBigger];
-        else if (selectedProofs.Select(p => p.Amount).Sum() < amountToSend && nextBigger == null)
-        {
-            selectedProofs = new List<Proof>();
-        }
-
-        // Return the selected proofs for sending and the remaining proofs to keep
-        return new SendResponse
-        {
-            Keep = proofs.Where(p => selectedProofs.All(sp => !sp.Secret.GetBytes().SequenceEqual(p.Secret.GetBytes())))
-                .ToList(),
-            Send = selectedProofs
-        };
-    }
-
-    /// <summary>
-    /// Function mapping payment amount to keyset supported amounts in order to create swap payload. Always tries to fit the biggest proof.
-    /// </summary>
-    /// <param name="paymentAmount">Amount that has to be covered.</param>
-    /// <param name="keyset">Mints keyset></param>
-    /// <returns>List of ulong proof amounts for given keyset</returns>
-    public static List<ulong> SplitToProofsAmounts(ulong paymentAmount, Keyset keyset)
-    {
-        var outputAmounts = new List<ulong>();
-        var possibleValues = keyset.Keys.OrderByDescending(x => x).ToList();
-        foreach (var value in possibleValues)
-        {
-            while (paymentAmount >= value)
-            {
-                outputAmounts.Add(value);
-                paymentAmount -= value;
-            }
-
-            if (paymentAmount == 0)
-            {
-                break;
-            }
-        }
-
-        return outputAmounts;
-    }
-
-    /// <summary>
-    /// Function selecting proofs to send and to keep from provided inputAmounts. 
+    /// Function selecting proofs to send and to keep from provided inputAmounts.
     /// </summary>
     /// <param name="inputAmounts"></param>
     /// <param name="keyset"></param>
     /// <param name="requestedAmont"></param>
     /// <returns></returns>
     /// <exception cref="InvalidOperationException"></exception>
-    public static (List<ulong> keep, List<ulong> send) SplitAmountsForPayment(List<ulong> inputAmounts, Keyset keyset,
-        ulong requestedAmont)
+    public static (List<ulong> keep, List<ulong> send) SplitAmountsForPayment(
+        List<ulong> inputAmounts,
+        Keyset keyset,
+        ulong requestedAmont
+    )
     {
         if (requestedAmont > inputAmounts.Aggregate((a, c) => a + c))
         {
@@ -219,218 +141,15 @@ public static class CashuUtils
         }
 
         var change = inputAmounts.Aggregate((a, c) => a + c) - requestedAmont;
-        var sendAmounts = SplitToProofsAmounts(requestedAmont, keyset);
+        var sendAmounts = Utils.SplitToProofsAmounts(requestedAmont, keyset);
         if (change == 0)
         {
             return (new List<ulong>(), sendAmounts);
         }
 
-        var keepAmounts = SplitToProofsAmounts(change, keyset);
+        var keepAmounts = Utils.SplitToProofsAmounts(change, keyset);
 
         return (keepAmounts, sendAmounts);
-    }
-
-    /// <summary>
-    /// Creates blank outputs (see nut-08)
-    /// </summary>
-    /// <param name="amount">Amount that blank outputs have to cover</param>
-    /// <param name="keysetId">Active keyset id which will sign outputs</param>
-    /// <param name="keys">Keys for given KeysetId</param>
-    /// <returns>Blank Outputs</returns>
-    public static OutputData CreateBlankOutputs(ulong amount, KeysetId keysetId, Keyset keys, DotNut.NBitcoin.BIP39.Mnemonic? mnemonic = null, int? counter = null)
-    {
-        if (amount == 0)
-        {
-            throw new ArgumentException("Cannot create blank outputs zero amount.");
-        }
-
-        var count = CalculateNumberOfBlankOutputs(amount);
-
-        // Amount is set for 1, they're blank. Mint will automatically set their amount and sign each by pk corresponding to value
-        var amounts = Enumerable.Repeat((ulong)1, count).ToList();
-        return CreateOutputs(amounts, keysetId, keys, mnemonic, counter);
-    }
-
-    /// <summary>
-    /// Creates outputs for swap/melt fee return. Outputs should have valid amounts. 
-    /// </summary>
-    /// <param name="amounts">Amounts for each output (e.g. [1,2,4,8]</param>
-    /// <param name="keysetId">ID of keyset we want to receive the proofs</param>
-    /// <param name="keys">Keyset for given ID</param>
-    /// <returns></returns>
-    /// <exception cref="ArgumentOutOfRangeException"></exception>
-    public static OutputData CreateOutputs(
-        List<ulong> amounts,
-        KeysetId keysetId,
-        Keyset keys,
-        DotNut.NBitcoin.BIP39.Mnemonic? mnemonic = null,
-        int? counter = null)
-    {
-        if (amounts.Any(a => !keys.Keys.Contains(a)))
-            throw new ArgumentException("Invalid amounts");
-
-        var blindedMessages = new List<BlindedMessage>(amounts.Count);
-        var secrets = new List<DotNut.ISecret>(amounts.Count);
-        var blindingFactors = new List<PrivKey>(amounts.Count);
-
-        Func<DotNut.ISecret> secretFactory;
-        Func<PrivKey> blindingFactorFactory;
-
-        if (mnemonic is not null && counter is { } c)
-        {
-            secretFactory = () => mnemonic.DeriveSecret(keysetId, c);
-            blindingFactorFactory = () => new PrivKey(
-                Convert.ToHexString(mnemonic.DeriveBlindingFactor(keysetId, c))
-            );
-        }
-        else
-        {
-            secretFactory = () =>
-            {
-                var bytes = RandomNumberGenerator.GetBytes(32);
-                return new StringSecret(Convert.ToHexString(bytes));
-            };
-
-            blindingFactorFactory = () =>
-            {
-                var bytes = RandomNumberGenerator.GetBytes(32);
-                return new PrivKey(Convert.ToHexString(bytes));
-            };
-        }
-
-        foreach (var amount in amounts)
-        {
-            var secret = secretFactory();
-            secrets.Add(secret);
-
-            var r = blindingFactorFactory();
-            blindingFactors.Add(r);
-
-            var B_ = DotNut.Cashu.ComputeB_(secret.ToCurve(), r);
-            blindedMessages.Add(new BlindedMessage() { Amount = amount, B_ = B_, Id = keysetId });
-        }
-
-        return new OutputData()
-        {
-            BlindingFactors = blindingFactors.ToArray(),
-            BlindedMessages = blindedMessages.ToArray(),
-            Secrets = secrets.ToArray()
-        };
-    }
-
-
-
-    /// <summary>
-    /// Calculates amount of blank outputs needed by mint to return overpaid fees
-    /// </summary>
-    /// <param name="amountToCover">Amount of tokens that has to be covered by mint.</param>
-    /// <returns>Integer amount of blank outputs needed</returns>
-    /// <exception cref="Exception">If amount is 0 - idk why someone would do that</exception>
-    private static int CalculateNumberOfBlankOutputs(ulong amountToCover)
-    {
-        if (amountToCover == 0)
-        {
-            return 0;
-        }
-
-        return Math.Max(
-            Convert.ToInt32(
-                Math.Ceiling(
-                    Math.Log2(amountToCover)
-                )
-            ), 1);
-    }
-
-    /// <summary>
-    /// Removes dleq from proof.
-    /// </summary>
-    /// <param name="proofs"></param>
-    /// <returns>proof without dleq</returns>
-    public static List<Proof> StripDleq(List<Proof> proofs)
-    {
-        foreach (var proof in proofs)
-        {
-            proof.DLEQ = null;
-        }
-
-        return proofs;
-    }
-
-    /// <summary>
-    ///  Method creating proofs, from provided promises (blinded signatures)
-    /// </summary>
-    /// <param name="promise">Blinded Signature</param>
-    /// <param name="r">Blinding factor</param>
-    /// <param name="secret">Yeah, secret</param>
-    /// <param name="amountPubkey">Key, corresponding to proof amount</param>
-    /// <returns>Valid proof</returns>
-    private static Proof ConstructProofFromPromise(
-        BlindSignature promise,
-        ECPrivKey r,
-        DotNut.ISecret secret,
-        ECPubKey amountPubkey)
-    {
-
-        //unblind signature
-        var C = DotNut.Cashu.ComputeC(promise.C_, r, amountPubkey);
-
-        if (promise.DLEQ is not null)
-        {
-            promise.DLEQ = new DLEQProof
-            {
-                E = promise.DLEQ.E,
-                S = promise.DLEQ.S,
-                R = r
-            };
-        }
-
-        return new Proof
-        {
-            Id = promise.Id,
-            Amount = promise.Amount,
-            Secret = secret,
-            C = C,
-            DLEQ = promise.DLEQ,
-        };
-    }
-
-    /// <summary>
-    /// Create Proofs from BlindSignature array
-    /// </summary>
-    /// <param name="promises">Blind Signatures</param>
-    /// <param name="rs">Blinding Factors</param>
-    /// <param name="secrets">yeah, secrets</param>
-    /// <param name="keyset"></param>
-    /// <returns>Proofs Constructed with params.</returns>
-    public static Proof[] CreateProofs(BlindSignature[] promises, PrivKey[] rs, DotNut.ISecret[] secrets,
-        Keyset keyset)
-    {
-        var keysetId = promises.Select(p => p.Id).Distinct().ToList();
-        //we should create that many proofs as there are signatures. when returning the fee, mint will return signatures for outputs 
-        if (keysetId.Count != 1)
-        {
-            throw new CashuPluginException("Error while creating proofs. All promises should be the same keyset!");
-        }
-
-        if (!keyset.GetKeysetId().Equals(keysetId.Single()))
-        {
-            throw new CashuPluginException(
-                "Error while creating proofs. Id derived from keyset different from promises!");
-        }
-
-        var proofs = new List<Proof>();
-        for (int i = 0; i < promises.Length; i++)
-        {
-            var p = promises[i];
-            var r = rs[i];
-            var secret = secrets[i];
-
-            var A = keyset[Convert.ToUInt64(p.Amount)];
-
-            proofs.Add(ConstructProofFromPromise(p, r, secret, A));
-        }
-
-        return proofs.ToArray();
     }
 
     /// <summary>
@@ -441,8 +160,12 @@ public static class CashuUtils
     /// <param name="endpoint">POST request endpoint. for now only http post supported</param>
     /// <param name="trustedMintsUrls">list of merchants trusted mints</param>
     /// <returns>serialized payment request</returns>
-    public static string CreatePaymentRequest(Money amount, string invoiceId, string endpoint,
-        IEnumerable<string>? trustedMintsUrls)
+    public static string CreatePaymentRequest(
+        Money amount,
+        string invoiceId,
+        string endpoint,
+        IEnumerable<string>? trustedMintsUrls
+    )
     {
         if (string.IsNullOrEmpty(endpoint))
         {
@@ -459,21 +182,13 @@ public static class CashuUtils
             throw new ArgumentException("Amount must be greater than 0.");
         }
 
-
         var paymentRequest = new DotNut.PaymentRequest()
         {
-            Unit = "sat", //since it's not standardized how to denominate tokens, it will always be sats. 
+            Unit = "sat", //since it's not standardized how to denominate tokens, it will always be sats.
             Amount = amount == Money.Zero ? null : (ulong)amount.Satoshi,
             PaymentId = invoiceId,
             Mints = trustedMintsUrls?.ToArray() ?? [],
-            Transports =
-            [
-                new PaymentRequestTransport
-                {
-                    Type = "post",
-                    Target = endpoint,
-                }
-            ]
+            Transports = [new PaymentRequestTransport { Type = "post", Target = endpoint }],
         };
         return paymentRequest.ToString();
     }
@@ -492,10 +207,12 @@ public static class CashuUtils
         CashuFeeConfig config,
         List<GetKeysetsResponse.KeysetItemResponse> keysets,
         out ulong keysetFee,
-        ulong feeReserve = 0)
+        ulong feeReserve = 0
+    )
     {
         keysetFee = 0;
-        if (proofs.Count == 0) return false;
+        if (proofs.Count == 0)
+            return false;
 
         var keysetsUsed = proofs.Select(p => p.Id).Distinct().ToList();
 
@@ -515,13 +232,15 @@ public static class CashuUtils
 
         // underflow safety
         long feeAdvanceDiff = (long)keysetFee - config.CustomerFeeAdvance;
-        if (feeAdvanceDiff < 0) feeAdvanceDiff = 0;
+        if (feeAdvanceDiff < 0)
+            feeAdvanceDiff = 0;
 
         if (feeAdvanceDiff > maximumKeysetFee)
             return false;
 
         long lightningFeeDiff = (long)feeReserve - (config.CustomerFeeAdvance - (long)keysetFee);
-        if (lightningFeeDiff < 0) lightningFeeDiff = 0;
+        if (lightningFeeDiff < 0)
+            lightningFeeDiff = 0;
 
         if (lightningFeeDiff > maximumLightningFee)
             return false;
@@ -541,9 +260,11 @@ public static class CashuUtils
         List<Proof> proofs,
         CashuFeeConfig config,
         ulong keysetFee,
-        ulong feeReserve = 0)
+        ulong feeReserve = 0
+    )
     {
-        if (proofs.Count == 0) return false;
+        if (proofs.Count == 0)
+            return false;
 
         ulong totalAmount = proofs.Select(p => p.Amount).Sum();
 
@@ -551,27 +272,20 @@ public static class CashuUtils
         decimal maximumLightningFee = Math.Ceiling(config.MaxLightningFee / 100m * totalAmount);
 
         long feeAdvanceDiff = (long)keysetFee - config.CustomerFeeAdvance;
-        if (feeAdvanceDiff < 0) feeAdvanceDiff = 0;
+        if (feeAdvanceDiff < 0)
+            feeAdvanceDiff = 0;
 
         if (feeAdvanceDiff > maximumKeysetFee)
             return false;
 
         long lightningFeeDiff = (long)feeReserve - (config.CustomerFeeAdvance - (long)keysetFee);
-        if (lightningFeeDiff < 0) lightningFeeDiff = 0;
+        if (lightningFeeDiff < 0)
+            lightningFeeDiff = 0;
 
         if (lightningFeeDiff > maximumLightningFee)
             return false;
 
         return true;
-    }
-    /// <summary>
-    /// Sum ulongs
-    /// </summary>
-    /// <param name="values"></param>
-    /// <returns></returns>
-    public static ulong Sum(this IEnumerable<ulong> values)
-    {
-        return values.Aggregate(0UL, (current, val) => current + val);
     }
 
     public class SimplifiedCashuToken
@@ -582,20 +296,6 @@ public static class CashuUtils
         public string Unit { get; set; }
 
         public ulong SumProofs => Proofs?.Select(p => p.Amount).Sum() ?? 0;
-    }
-
-    public class SendResponse
-    {
-        public List<Proof> Keep { get; set; }
-
-        public List<Proof> Send { get; set; }
-    }
-
-    public class OutputData
-    {
-        public BlindedMessage[] BlindedMessages { get; set; }
-        public DotNut.ISecret[] Secrets { get; set; }
-        public PrivKey[] BlindingFactors { get; set; }
     }
 
     public static bool TryDecodeToken(string token, out CashuToken? cashuToken)
@@ -613,13 +313,13 @@ public static class CashuUtils
         }
         catch (Exception)
         {
-            //do nothing, token is invalid 
+            //do nothing, token is invalid
         }
 
         cashuToken = null;
         return false;
     }
-    
+
     /// <summary>
     /// Formating method specified in NUT-1 based on ISO 4217.
     /// Only UI tweak, shouldn't trust mint with its unit.
@@ -635,7 +335,7 @@ public static class CashuUtils
         {
             { "BTC", 8 },
             { "SAT", 0 },
-            { "MSAT", 3 }
+            { "MSAT", 3 },
         };
 
         if (bitcoinUnits.TryGetValue(unit, out var minorUnit))
@@ -646,11 +346,32 @@ public static class CashuUtils
 
         var specialMinorUnits = new Dictionary<string, int>
         {
-            { "BHD", 3 }, { "BIF", 0 }, { "CLF", 4 }, { "CLP", 0 }, { "DJF", 0 }, { "GNF", 0 },
-            { "IQD", 3 }, { "ISK", 0 }, { "JOD", 3 }, { "JPY", 0 }, { "KMF", 0 }, { "KRW", 0 },
-            { "KWD", 3 }, { "LYD", 3 }, { "OMR", 3 }, { "PYG", 0 }, { "RWF", 0 }, { "TND", 3 },
-            { "UGX", 0 }, { "UYI", 0 }, { "UYW", 4 }, { "VND", 0 }, { "VUV", 0 }, { "XAF", 0 },
-            { "XOF", 0 }, { "XPF", 0 }
+            { "BHD", 3 },
+            { "BIF", 0 },
+            { "CLF", 4 },
+            { "CLP", 0 },
+            { "DJF", 0 },
+            { "GNF", 0 },
+            { "IQD", 3 },
+            { "ISK", 0 },
+            { "JOD", 3 },
+            { "JPY", 0 },
+            { "KMF", 0 },
+            { "KRW", 0 },
+            { "KWD", 3 },
+            { "LYD", 3 },
+            { "OMR", 3 },
+            { "PYG", 0 },
+            { "RWF", 0 },
+            { "TND", 3 },
+            { "UGX", 0 },
+            { "UYI", 0 },
+            { "UYW", 4 },
+            { "VND", 0 },
+            { "VUV", 0 },
+            { "XAF", 0 },
+            { "XOF", 0 },
+            { "XPF", 0 },
         };
 
         int fiatMinor = specialMinorUnits.ContainsKey(unit) ? specialMinorUnits[unit] : 2;
@@ -658,5 +379,4 @@ public static class CashuUtils
 
         return (fiatAdjusted, unit);
     }
-
 }

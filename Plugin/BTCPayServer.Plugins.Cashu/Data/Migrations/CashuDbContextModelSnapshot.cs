@@ -23,6 +23,22 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("BTCPayServer.Plugins.Cashu.Data.Models.CashuWalletConfig", b =>
+                {
+                    b.Property<string>("StoreId")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Verified")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("WalletMnemonic")
+                        .HasColumnType("text");
+
+                    b.HasKey("StoreId");
+
+                    b.ToTable("CashuWalletConfig", "BTCPayServer.Plugins.Cashu");
+                });
+
             modelBuilder.Entity("BTCPayServer.Plugins.Cashu.Data.Models.ExportedToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -64,6 +80,12 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
                     b.Property<string>("Details")
                         .HasColumnType("text");
 
+                    b.Property<decimal>("InputAmount")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<string>("InputProofsJson")
+                        .HasColumnType("text");
+
                     b.Property<string>("InvoiceId")
                         .HasColumnType("text");
 
@@ -75,6 +97,9 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
 
                     b.Property<int>("OperationType")
                         .HasColumnType("integer");
+
+                    b.Property<string>("OutputData")
+                        .HasColumnType("text");
 
                     b.Property<bool>("Resolved")
                         .HasColumnType("boolean");
@@ -108,6 +133,9 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Url")
+                        .IsUnique();
+
                     b.ToTable("Mints", "BTCPayServer.Plugins.Cashu");
                 });
 
@@ -127,9 +155,28 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
 
                     b.HasKey("MintId", "KeysetId");
 
+                    b.HasIndex("KeysetId")
+                        .IsUnique();
+
                     b.HasIndex("MintId");
 
                     b.ToTable("MintKeys", "BTCPayServer.Plugins.Cashu");
+                });
+
+            modelBuilder.Entity("BTCPayServer.Plugins.Cashu.Data.Models.StoreKeysetCounter", b =>
+                {
+                    b.Property<string>("StoreId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("KeysetId")
+                        .HasColumnType("text");
+
+                    b.Property<long>("Counter")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("StoreId", "KeysetId");
+
+                    b.ToTable("StoreKeysetCounters", "BTCPayServer.Plugins.Cashu");
                 });
 
             modelBuilder.Entity("BTCPayServer.Plugins.Cashu.Data.Models.StoredProof", b =>
@@ -151,7 +198,7 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
                         .HasColumnType("text")
                         .HasAnnotation("Relational:JsonPropertyName", "dleq");
 
-                    b.Property<Guid?>("FailedTransactionId")
+                    b.Property<Guid?>("ExportedTokenId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Id")
@@ -159,10 +206,17 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
                         .HasColumnType("text")
                         .HasAnnotation("Relational:JsonPropertyName", "id");
 
+                    b.Property<string>("P2PkE")
+                        .HasColumnType("text")
+                        .HasAnnotation("Relational:JsonPropertyName", "p2pk_e");
+
                     b.Property<string>("Secret")
                         .IsRequired()
                         .HasColumnType("text")
                         .HasAnnotation("Relational:JsonPropertyName", "secret");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
 
                     b.Property<string>("StoreId")
                         .HasColumnType("text");
@@ -175,9 +229,14 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
 
                     b.HasIndex("Amount");
 
-                    b.HasIndex("FailedTransactionId");
+                    b.HasIndex("ExportedTokenId");
 
                     b.HasIndex("Id");
+
+                    b.HasIndex("Secret")
+                        .IsUnique();
+
+                    b.HasIndex("Status");
 
                     b.HasIndex("StoreId");
 
@@ -186,28 +245,6 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
 
             modelBuilder.Entity("BTCPayServer.Plugins.Cashu.Data.Models.FailedTransaction", b =>
                 {
-                    b.OwnsOne("BTCPayServer.Plugins.Cashu.CashuAbstractions.CashuUtils+OutputData", "OutputData", b1 =>
-                        {
-                            b1.Property<Guid>("FailedTransactionId")
-                                .HasColumnType("uuid");
-
-                            b1.Property<string>("BlindedMessages")
-                                .HasColumnType("text");
-
-                            b1.Property<string>("BlindingFactors")
-                                .HasColumnType("text");
-
-                            b1.Property<string>("Secrets")
-                                .HasColumnType("text");
-
-                            b1.HasKey("FailedTransactionId");
-
-                            b1.ToTable("FailedTransactions", "BTCPayServer.Plugins.Cashu");
-
-                            b1.WithOwner()
-                                .HasForeignKey("FailedTransactionId");
-                        });
-
                     b.OwnsOne("BTCPayServer.Plugins.Cashu.Data.Models.MeltDetails", "MeltDetails", b1 =>
                         {
                             b1.Property<Guid>("FailedTransactionId")
@@ -234,8 +271,6 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
                         });
 
                     b.Navigation("MeltDetails");
-
-                    b.Navigation("OutputData");
                 });
 
             modelBuilder.Entity("BTCPayServer.Plugins.Cashu.Data.Models.MintKeys", b =>
@@ -251,14 +286,15 @@ namespace BTCPayServer.Plugins.Cashu.Data.Migrations
 
             modelBuilder.Entity("BTCPayServer.Plugins.Cashu.Data.Models.StoredProof", b =>
                 {
-                    b.HasOne("BTCPayServer.Plugins.Cashu.Data.Models.FailedTransaction", null)
-                        .WithMany("UsedProofs")
-                        .HasForeignKey("FailedTransactionId");
+                    b.HasOne("BTCPayServer.Plugins.Cashu.Data.Models.ExportedToken", null)
+                        .WithMany("Proofs")
+                        .HasForeignKey("ExportedTokenId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
-            modelBuilder.Entity("BTCPayServer.Plugins.Cashu.Data.Models.FailedTransaction", b =>
+            modelBuilder.Entity("BTCPayServer.Plugins.Cashu.Data.Models.ExportedToken", b =>
                 {
-                    b.Navigation("UsedProofs");
+                    b.Navigation("Proofs");
                 });
 
             modelBuilder.Entity("BTCPayServer.Plugins.Cashu.Data.Models.Mint", b =>

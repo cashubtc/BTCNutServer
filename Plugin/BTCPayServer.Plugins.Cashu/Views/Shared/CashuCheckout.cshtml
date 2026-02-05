@@ -73,7 +73,7 @@
         data: function() {
             return {
                 currentTab: undefined,
-                pastedTokenPaymentUrl: @Safe.Json(Url.Action(nameof(CashuController.PayByToken), "Cashu")),
+                pastedTokenPaymentUrl: @Safe.Json(Url.Action(nameof(CashuPaymentController.PayByToken), "CashuPayment")),
                 isSubmitting: false,
                 
                 showPinModal: false,

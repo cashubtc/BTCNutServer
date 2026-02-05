@@ -8,7 +8,7 @@ public class ExportedTokenViewModel
     public ulong Amount { get; set; }
     public string Unit { get; set; }
     public string MintAddress { get; set; }
-    
+
     public string FormatedAmount
     {
         get
@@ -18,4 +18,3 @@ public class ExportedTokenViewModel
         }
     }
 }
-

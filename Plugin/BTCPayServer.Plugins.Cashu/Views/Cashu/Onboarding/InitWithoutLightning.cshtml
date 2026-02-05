@@ -1,0 +1,45 @@
+@using BTCPayServer.Abstractions.Extensions
+@using BTCPayServer.Plugins.Cashu
+@using BTCPayServer.Plugins.Cashu.Data.enums
+@using Microsoft.AspNetCore.Routing
+@model BTCPayServer.Plugins.Cashu.ViewModels.CashuInitWithoutLightningViewModel
+@{
+    ViewData.SetActivePage(CashuPlugin.PluginNavKey, "Cashu Configuration", "Configuration");
+}
+
+<div class="sticky-header d-flex align-items-center justify-content-between">
+    <h2 class="mb-0">@ViewData["Title"]</h2>
+</div>
+<div style="max-width: 960px;">
+    <h5 class="mt-4">Using Cashu without Lightning</h5>
+    <p class="text-muted">
+        Since you don't have a Lightning node connected, your store can only receive ecash in its native form – held as tokens at the mints you select. Customers paying with Cashu will need to send ecash from one of those mints.
+    </p>
+
+    <div class="alert alert-warning d-flex align-items-center">
+        <div>
+            <strong><vc:icon symbol="warning" class="me-2" />Important</strong><br />
+            Trusted mints act as custodians. They hold the Bitcoin that backs your ecash, so only use mints you fully trust. <br/>
+            If you want to move your ecash back to Bitcoin, you can pass it through another Cashu wallet and send it over Lightning.
+        </div>
+    </div>
+        
+    <p class="text-muted">
+        Please understand that Cashu is still under active development and considered experimental. Before you proceed, take time to familiarize yourself with the risks.
+        <a href="https://docs.cashu.space" target="_blank" rel="noreferrer">More information.</a>
+    </p>
+    
+    <h5 class="mt-5">Mint management</h5>
+    <p class="text-muted">
+        To start receiving ecash, add at least one mint you trust. You can add more anytime.
+    </p>
+    <form asp-controller="UICashuStores" asp-action="StoreConfig" asp-route-storeId="@Context.GetRouteValue("storeId")">
+        <partial id="trusted-mints-input" name="_TrustedMintsInput" model=@Model.TrustedMintsUrls/>
+        <input type="hidden" name="PaymentAcceptanceModel" value="@CashuPaymentModel.TrustedMintsOnly"/>
+        <input type="hidden" name="Enabled" value="true" />
+        <input type="hidden" name="HasLightningNodeConnected" value="false" />
+        <div class="d-flex justify-content-end mt-4">
+            <input type="submit" class="btn btn-primary" value="Finish"/>
+        </div>
+    </form>
+</div>

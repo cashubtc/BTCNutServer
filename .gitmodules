@@ -1,3 +1,7 @@
 [submodule "submodules/btcpayserver"]
 	path = submodules/btcpayserver
 	url = https://github.com/btcpayserver/btcpayserver.git
+[submodule "submodules/DotNut"]
+	path = submodules/DotNut
+	url = https://github.com/d4rp4t/DotNut.git
+	branch = feat/abstractions

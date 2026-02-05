@@ -11,7 +11,8 @@ public class CashuDbContextFactory(IOptions<DatabaseOptions> options)
     : BaseDbContextFactory<CashuDbContext>(options, CashuDbContext.DefaultPluginSchema)
 {
     public override CashuDbContext CreateContext(
-        Action<NpgsqlDbContextOptionsBuilder> npgsqlOptionsAction = null)
+        Action<NpgsqlDbContextOptionsBuilder> npgsqlOptionsAction = null
+    )
     {
         var builder = new DbContextOptionsBuilder<CashuDbContext>();
         ConfigureBuilder(builder, npgsqlOptionsAction);

@@ -1,0 +1,42 @@
+@model BTCPayServer.Plugins.Cashu.ViewModels.GettingStartedViewModel;
+@{
+    Layout = "Views/UIStores/_LayoutWalletSetup";
+}
+
+
+<h1 class="text-center" text-translate="true">Let's get started</h1>
+
+<h2 class="text-center">Add Cashu support to your BTCPayServer in a few quick steps.</h2>
+<br>
+<div class="mt-5">
+    <h3 class="my-4" text-translate="true">I don't have a Cashu wallet</h3>
+    <div class="list-group">
+        <a asp-controller="UICashuOnboarding" asp-action="CreateMnemonic" asp-route-storeId="@Model.StoreId" aspid="GenerateWalletLink" class="list-group-item list-group-item-action">
+            <div class="image">
+                <vc:icon symbol="wallet-new"/>
+            </div>
+            <div class="content">
+                <h4 text-translate="true">Create a new wallet</h4>
+                <p class="mb-0 text-secondary" text-translate="true">Generate a brand-new wallet to use</p>
+            </div>
+            <vc:icon symbol="caret-right"/>
+        </a>
+    </div>
+</div>
+
+<br>
+<div class="mt-5">
+    <h3 class="my-4" text-translate="true">I have a Cashu wallet</h3>
+    <div class="list-group">
+        <a asp-controller="UICashuOnboarding" asp-action="RestoreFromMnemonic" asp-route-storeId="@Model.StoreId" id="ImportWalletOptionsLink" class="list-group-item list-group-item-action">
+            <div class="image">
+                <vc:icon symbol="wallet-existing"/>
+            </div>
+            <div class="content">
+                <h4 text-translate="true">Connect an existing wallet</h4>
+                <p class="mb-0 text-secondary" text-translate="true">Import an existing Cashu wallet. </p>
+            </div>
+            <vc:icon symbol="caret-right" />
+        </a>
+    </div>
+</div>
