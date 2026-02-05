@@ -54,7 +54,10 @@
       Private="true"
     />
     <EmbeddedResource Include="Resources\**" />
-    <ProjectReference Include="..\..\submodules\DotNut\DotNut\DotNut.csproj" />
+    <ProjectReference Include="..\..\submodules\DotNut\DotNut\DotNut.csproj">
+      <Private>true</Private>
+      <ExcludeAssets>none</ExcludeAssets>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>
