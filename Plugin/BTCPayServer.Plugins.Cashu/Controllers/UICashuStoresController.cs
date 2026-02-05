@@ -124,7 +124,7 @@ public class UICashuStoresController : Controller
         );
 
         //If lighting isn't configured - don't allow user to set meltImmediately.
-        var paymentMethodConfig = new CashuPaymentMethodConfig()
+        var paymentMethodConfig = new CashuPaymentMethodConfig
         {
             PaymentModel = lightningEnabled
                 ? viewModel.PaymentAcceptanceModel
@@ -135,9 +135,9 @@ public class UICashuStoresController : Controller
                 currentSettings?.FeeConfing
                 ?? new CashuFeeConfig
                 {
-                    CustomerFeeAdvance = 5,
-                    MaxLightningFee = 5,
-                    MaxKeysetFee = 5,
+                    CustomerFeeAdvance = 3,
+                    MaxLightningFee = 3,
+                    MaxKeysetFee = 3,
                 },
         };
 
