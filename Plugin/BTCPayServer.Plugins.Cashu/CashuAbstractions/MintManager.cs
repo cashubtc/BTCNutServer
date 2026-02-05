@@ -144,11 +144,11 @@ public class MintManager
     {
         await using var db = _dbContextFactory.CreateContext();
         
-        var keysetIdStrings = keysetIds.Select(k => k.ToString()).ToList();
+        var keysetIdList = keysetIds.ToList();
         
         var mintKeysets = await db.MintKeys
             .Include(mk => mk.Mint)
-            .Where(mk => keysetIdStrings.Contains(mk.KeysetId.ToString()))
+            .Where(mk => keysetIdList.Contains(mk.KeysetId))
             .ToListAsync();
 
         return mintKeysets.ToDictionary(

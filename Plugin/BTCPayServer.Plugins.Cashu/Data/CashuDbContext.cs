@@ -89,7 +89,13 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
         {
             entity
                 .Property(mk => mk.KeysetId)
-                .HasConversion(kid => kid.ToString(), kid => new KeysetId(kid.ToString()));
+                .HasConversion(kid => kid.ToString(), kid => new KeysetId(kid.ToString()))
+                .Metadata.SetValueComparer(new ValueComparer<KeysetId>(
+                    (k1, k2) => k1 == k2,
+                    k => k.GetHashCode(),
+                    k => k
+                ));
+            
             entity.HasKey(mk => new { mk.MintId, mk.KeysetId });
 
             entity.HasIndex(mk => mk.MintId);
