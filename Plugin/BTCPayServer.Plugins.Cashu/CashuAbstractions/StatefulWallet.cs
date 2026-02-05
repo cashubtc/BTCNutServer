@@ -9,12 +9,15 @@ using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
 using BTCPayServer.Plugins.Cashu.Errors;
+using BTCPayServer.Plugins.Cashu.PaymentHandlers;
 using DotNut;
 using DotNut.Abstractions;
 using DotNut.Abstractions.Handlers;
 using DotNut.ApiModels;
 using Microsoft.EntityFrameworkCore;
+using NBitcoin;
 using DotNutOutputData = DotNut.Abstractions.OutputData;
+using Utils = DotNut.Abstractions.Utils;
 
 namespace BTCPayServer.Plugins.Cashu.CashuAbstractions;
 
@@ -123,8 +126,7 @@ public class StatefulWallet : IDisposable
     /// <param name="keysets"></param>
     /// <returns>Melt Quote that has to be sent to mint</returns>
     public async Task<CreateMeltQuoteResult> CreateMaxMeltQuote(
-        CashuUtils.SimplifiedCashuToken token,
-        decimal singleUnitPrice,
+        CashuOperationContext opCtx,
         List<GetKeysetsResponse.KeysetItemResponse> keysets
     )
     {
@@ -137,16 +139,15 @@ public class StatefulWallet : IDisposable
                 throw new CashuPluginException("Lightning client is not configured");
             }
 
-            var tokenWorth = Math.Floor(token.SumProofs * singleUnitPrice);
 
             var initialInvoice = await _lightningClient.CreateInvoice(
-                LightMoney.Satoshis(tokenWorth),
+                opCtx.Value,
                 "initial invoice for melt quote",
                 new TimeSpan(0, 0, 30, 0)
             );
 
             //check the fee reserve for this melt
-            var unit = token.Unit ?? "sat";
+            var unit = opCtx.Token.Unit ?? "sat";
             var initialMeltHandler = await _wallet
                 .CreateMeltQuote()
                 .WithUnit(unit)
@@ -156,18 +157,18 @@ public class StatefulWallet : IDisposable
             var initialMeltQuote = initialMeltHandler.GetQuote();
 
             //calculate the keyset fee
-            var keysetFee = token.Proofs.ComputeFee(
+            var keysetFee = opCtx.Token.Proofs.ComputeFee(
                 keysets.ToDictionary(k => k.Id, k => k.InputFee ?? 0)
             );
 
             //subtract fee reserve and keysetFee from Proofs.
             var amountWithoutFees =
-                singleUnitPrice
+                opCtx.UnitValue
                 * (initialMeltQuote.Amount - (ulong)initialMeltQuote.FeeReserve - keysetFee);
 
             var invoiceWithFeesSubtracted = await _lightningClient.CreateInvoice(
                 new CreateInvoiceParams(
-                    LightMoney.Satoshis(amountWithoutFees),
+                    amountWithoutFees,
                     "Cashu token melt in BTCPay Cashu Plugin",
                     new TimeSpan(0, 2, 0, 0)
                 )

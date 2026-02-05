@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Client;
+using BTCPayServer.Lightning;
 using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
@@ -30,36 +31,18 @@ namespace BTCPayServer.Plugins.Cashu.Controllers;
     Policy = Policies.CanModifyStoreSettings,
     AuthenticationSchemes = AuthenticationSchemes.Cookie
 )]
-public class UICashuWalletController : Controller
+public class UICashuWalletController(
+    InvoiceRepository invoiceRepository,
+    PaymentMethodHandlerDictionary handlers,
+    CashuPaymentMethodHandler handler,
+    CashuPaymentService cashuPaymentService,
+    CashuDbContextFactory cashuDbContextFactory,
+    MintManager mintManager,
+    StatefulWalletFactory walletFactory,
+    ILogger<UICashuWalletController> logger)
+    : Controller
 {
-    public UICashuWalletController(
-        InvoiceRepository invoiceRepository,
-        PaymentMethodHandlerDictionary handlers,
-        CashuPaymentService cashuPaymentService,
-        CashuDbContextFactory cashuDbContextFactory,
-        MintManager mintManager,
-        StatefulWalletFactory walletFactory,
-        ILogger<UICashuWalletController> logger
-    )
-    {
-        _invoiceRepository = invoiceRepository;
-        _handlers = handlers;
-        _cashuPaymentService = cashuPaymentService;
-        _cashuDbContextFactory = cashuDbContextFactory;
-        _mintManager = mintManager;
-        _walletFactory = walletFactory;
-        _logger = logger;
-    }
-
     private StoreData StoreData => HttpContext.GetStoreData();
-
-    private readonly InvoiceRepository _invoiceRepository;
-    private readonly PaymentMethodHandlerDictionary _handlers;
-    private readonly CashuPaymentService _cashuPaymentService;
-    private readonly CashuDbContextFactory _cashuDbContextFactory;
-    private readonly MintManager _mintManager;
-    private readonly StatefulWalletFactory _walletFactory;
-    private readonly ILogger<UICashuWalletController> _logger;
 
     /// <summary>
     /// Api route for fetching current store Cashu Wallet view - All stored proofs grouped by mint and unit which can be exported.
@@ -68,7 +51,7 @@ public class UICashuWalletController : Controller
     [HttpGet("{storeId}/cashu/wallet")]
     public async Task<IActionResult> CashuWallet(string storeId)
     {
-        await using var db = _cashuDbContextFactory.CreateContext();
+        await using var db = cashuDbContextFactory.CreateContext();
         if (!db.CashuWalletConfig.Any(cwc => cwc.StoreId == StoreData.Id))
         {
             return RedirectToAction(
@@ -110,7 +93,7 @@ public class UICashuWalletController : Controller
             }
             catch (Exception ex)
             {
-                _logger.LogError(
+                logger.LogError(
                     $"[Cashu Wallet] Could not load mint {mint}, Exception: {ex.Message}"
                 );
                 unavailableMints.Add(mint);
@@ -163,11 +146,11 @@ public class UICashuWalletController : Controller
             return RedirectToAction("CashuWallet", new { storeId = StoreData.Id });
         }
 
-        await using var db = _cashuDbContextFactory.CreateContext();
+        await using var db = cashuDbContextFactory.CreateContext();
         List<GetKeysetsResponse.KeysetItemResponse> keysets;
         try
         {
-            var cashuWallet = await _walletFactory.CreateAsync(StoreData.Id, mintUrl, unit);
+            var cashuWallet = await walletFactory.CreateAsync(StoreData.Id, mintUrl, unit);
             keysets = await cashuWallet.GetKeysets();
             if (keysets == null || keysets.Count == 0)
             {
@@ -259,7 +242,7 @@ public class UICashuWalletController : Controller
     [HttpGet("{storeId}/cashu/token/{tokenId}")]
     public async Task<IActionResult> ExportedToken(string storeId, Guid tokenId)
     {
-        await using var db = _cashuDbContextFactory.CreateContext();
+        await using var db = cashuDbContextFactory.CreateContext();
 
         var exportedToken = await db
             .ExportedTokens.Include(et => et.Proofs)
@@ -306,7 +289,7 @@ public class UICashuWalletController : Controller
     [HttpGet("{storeId}/cashu/failed-transactions")]
     public async Task<IActionResult> FailedTransactions(string storeId)
     {
-        await using var db = _cashuDbContextFactory.CreateContext();
+        await using var db = cashuDbContextFactory.CreateContext();
         //fetch recently failed transactions
         var failedTransactions = await db
             .FailedTransactions.Where(ft => ft.StoreId == StoreData.Id)
@@ -318,7 +301,7 @@ public class UICashuWalletController : Controller
     [HttpPost("{storeId}/cashu/failed-transactions")]
     public async Task<IActionResult> PostFailedTransaction(string storeId, Guid failedTransactionId)
     {
-        await using var db = _cashuDbContextFactory.CreateContext();
+        await using var db = cashuDbContextFactory.CreateContext();
         var failedTransaction = db.FailedTransactions.SingleOrDefault(t =>
             t.Id == failedTransactionId
         );
@@ -337,15 +320,7 @@ public class UICashuWalletController : Controller
             return RedirectToAction("FailedTransactions", new { storeId = StoreData.Id });
         }
 
-        var handler = _handlers[CashuPlugin.CashuPmid];
-
-        if (handler is not CashuPaymentMethodHandler cashuHandler)
-        {
-            TempData[WellKnownTempData.ErrorMessage] = "Couldn't obtain CashuPaymentHandler";
-            return RedirectToAction("FailedTransactions", new { storeId = StoreData.Id });
-        }
-
-        var invoice = await _invoiceRepository.GetInvoice(failedTransaction.InvoiceId);
+        var invoice = await invoiceRepository.GetInvoice(failedTransaction.InvoiceId);
 
         if (invoice is null)
         {
@@ -360,15 +335,14 @@ public class UICashuWalletController : Controller
         {
             if (failedTransaction.OperationType == OperationType.Melt)
             {
-                pollResult = await _cashuPaymentService.PollFailedMelt(
+                pollResult = await cashuPaymentService.PollFailedMelt(
                     failedTransaction,
-                    StoreData,
-                    cashuHandler
+                    StoreData
                 );
             }
             else
             {
-                pollResult = await _cashuPaymentService.PollFailedSwap(
+                pollResult = await cashuPaymentService.PollFailedSwap(
                     failedTransaction,
                     StoreData
                 );
@@ -394,19 +368,19 @@ public class UICashuWalletController : Controller
             return RedirectToAction("FailedTransactions", new { storeId = StoreData.Id });
         }
 
-        await _cashuPaymentService.AddProofsToDb(
+        await cashuPaymentService.AddProofsToDb(
             pollResult.ResultProofs,
             StoreData.Id,
             failedTransaction.MintUrl,
             ProofState.Available
         );
-        decimal singleUnitPrice;
+        LightMoney singleUnitPrice;
         try
         {
             singleUnitPrice = await CashuUtils.GetTokenSatRate(
                 failedTransaction.MintUrl,
                 failedTransaction.Unit,
-                cashuHandler.Network.NBitcoinNetwork
+                handler.Network.NBitcoinNetwork
             );
         }
         catch (Exception)
@@ -415,27 +389,29 @@ public class UICashuWalletController : Controller
             return RedirectToAction("FailedTransactions", new { storeId = StoreData.Id });
         }
 
-        // calculate payment amount
-        ulong inputAmount = failedTransaction.InputAmount;
-
-        // old FailedTransactions have InputAmount = 0 and InputProofsJson = NULL
-        // this happened because the migration added these columns with default values
-        // the actual input proofs were deleted from the Proofs table (they were customer's proofs, not wallet proofs)
-        // for recovery, we use the invoice amount as approximation
-        if (inputAmount == 0)
+        var isOld = failedTransaction is { InputAmount: 0, InputProofsJson: null };
+        LightMoney? paymentAmount = isOld  switch
         {
-            // use invoice amount divided by single unit price as approximation
-            var invoiceAmountSats = invoice.Price;
-            inputAmount = (ulong)(invoiceAmountSats / singleUnitPrice);
-
+            // old FailedTransactions have InputAmount = 0 and InputProofsJson = NULL
+            // this happened because the migration added these columns with default values
+            // the actual input proofs were deleted from the Proofs table (they were customer's proofs, not wallet proofs)
+            // for recovery, we use the invoice amount as approximation
             // this is best-effort recovery for old failed transactions
             // the actual input amount is lost, but invoice amount should be close enough
+            true when invoice.Currency is "SATS" => LightMoney.Satoshis(invoice.Price),
+            true when invoice.Currency is "BTC" => LightMoney.Coins(invoice.Price),
+            false => failedTransaction.InputAmount * singleUnitPrice,
+            _ => null
+        };
+        if (paymentAmount is null)
+        {
+            TempData[WellKnownTempData.ErrorMessage] = $"Failed transaction InputAmount is 0 and invoice currency isn't SATS or BTC.";
+            return RedirectToAction("FailedTransactions", new { storeId = StoreData.Id });
         }
 
-        await _cashuPaymentService.RegisterCashuPayment(
+        await cashuPaymentService.RegisterCashuPayment(
             invoice,
-            cashuHandler,
-            Money.Satoshis(inputAmount * singleUnitPrice)
+            paymentAmount
         );
         db.FailedTransactions.Remove(failedTransaction);
         await db.SaveChangesAsync();
@@ -487,7 +463,7 @@ public class UICashuWalletController : Controller
     [HttpGet("{storeId}/cashu/check-token-states")]
     public async Task<IActionResult> CheckAllTokenStates(string storeId)
     {
-        await using var db = _cashuDbContextFactory.CreateContext();
+        await using var db = cashuDbContextFactory.CreateContext();
 
         var unspentTokens = await db
             .ExportedTokens.Include(t => t.Proofs)
@@ -552,7 +528,7 @@ public class UICashuWalletController : Controller
         {
             if (error != null)
             {
-                _logger.LogWarning("Failed mint {Mint}: {Message}", mint, error.Message);
+                logger.LogWarning("Failed mint {Mint}: {Message}", mint, error.Message);
                 failedMints.Add(mint);
                 continue;
             }
@@ -587,7 +563,7 @@ public class UICashuWalletController : Controller
     [HttpGet("{storeId}/cashu/remove-spent-proofs")]
     public async Task<IActionResult> RemoveSpentProofs(string storeId)
     {
-        await using var db = _cashuDbContextFactory.CreateContext();
+        await using var db = cashuDbContextFactory.CreateContext();
         
         var proofsToCheck = await db
             .Proofs.Where(p => 
@@ -603,7 +579,7 @@ public class UICashuWalletController : Controller
         }
 
         var keysetIds = proofsToCheck.Select(p => p.Id).Distinct();
-        var keysetToMintMap = await _mintManager.MapKeysetIdsToMints(keysetIds);
+        var keysetToMintMap = await mintManager.MapKeysetIdsToMints(keysetIds);
 
         var proofsByMintAndUnit = proofsToCheck
             .Where(p => keysetToMintMap.ContainsKey(p.Id.ToString()))
@@ -644,7 +620,7 @@ public class UICashuWalletController : Controller
         {
             if (error != null)
             {
-                _logger.LogWarning(
+                logger.LogWarning(
                     "Failed to check proof states for mint {Mint}: {Message}",
                     mint,
                     error.Message
