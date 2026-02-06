@@ -26,10 +26,8 @@ public class CashuPlugin : BaseBTCPayServerPlugin
     {
         services.AddTransactionLinkProvider(CashuPmid, new CashuTransactionLinkProvider("cashu"));
 
-        services.AddSingleton(provider =>
-            (IPaymentMethodHandler)
-                ActivatorUtilities.CreateInstance(provider, typeof(CashuPaymentMethodHandler))
-        );
+        services.AddSingleton<CashuPaymentMethodHandler>();
+        services.AddSingleton<IPaymentMethodHandler>(provider => provider.GetRequiredService<CashuPaymentMethodHandler>());
         services.AddSingleton(provider =>
             (ICheckoutModelExtension)
                 ActivatorUtilities.CreateInstance(provider, typeof(CashuCheckoutModelExtension))

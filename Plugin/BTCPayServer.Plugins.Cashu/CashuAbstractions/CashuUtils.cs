@@ -37,15 +37,15 @@ public static class CashuUtils
     /// </summary>
     /// <param name="token">Encoded Cashu Token</param>
     /// <param name="network"></param>
-    /// <returns>Token's worth in satoshi</returns>
-    public static async Task<decimal> GetTokenSatRate(CashuToken token, Network network)
+    /// <returns>Token's worth</returns>
+    public static async Task<LightMoney> GetTokenSatRate(CashuToken token, Network network)
     {
         var simplifiedToken = SimplifyToken(token);
 
         return await GetTokenSatRate(simplifiedToken.Mint, simplifiedToken.Unit ?? "sat", network);
     }
 
-    public static async Task<decimal> GetTokenSatRate(string mint, string unit, Network network)
+    public static async Task<LightMoney> GetTokenSatRate(string mint, string unit, Network network)
     {
         if (String.IsNullOrWhiteSpace(mint))
         {
@@ -81,7 +81,7 @@ public static class CashuUtils
             throw new NullReferenceException($"Invalid payment request: {paymentRequest}");
         }
 
-        return parsedPaymentRequest.MinimumAmount.ToUnit(LightMoneyUnit.Satoshi) / 1000;
+        return parsedPaymentRequest.MinimumAmount / 1000;
     }
 
     /// <summary>
