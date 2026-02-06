@@ -81,7 +81,7 @@ public static class CashuUtils
             throw new NullReferenceException($"Invalid payment request: {paymentRequest}");
         }
 
-        return parsedPaymentRequest.MinimumAmount;
+        return parsedPaymentRequest.MinimumAmount / 1000;
     }
 
     /// <summary>
