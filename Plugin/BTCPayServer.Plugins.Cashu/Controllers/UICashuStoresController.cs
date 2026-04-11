@@ -90,7 +90,7 @@ public class UICashuStoresController : Controller
             model.Enabled = await _cashuStatusProvider.CashuEnabled(StoreData.Id);
             model.PaymentAcceptanceModel = cashuPaymentMethodConfig.PaymentModel;
             model.TrustedMintsUrls = String.Join(
-                "\n",
+                ";",
                 cashuPaymentMethodConfig.TrustedMintsUrls
             );
         }
@@ -109,7 +109,7 @@ public class UICashuStoresController : Controller
         viewModel.TrustedMintsUrls ??= "";
 
         var parsedTrustedMintsUrls = viewModel
-            .TrustedMintsUrls.Split(["\r\n", "\r", "\n"], StringSplitOptions.RemoveEmptyEntries)
+            .TrustedMintsUrls.Split(["\r\n", "\r", "\n", ";"], StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.Trim())
             .Where(line => !string.IsNullOrWhiteSpace(line))
             .Select(MintManager.NormalizeMintUrl)

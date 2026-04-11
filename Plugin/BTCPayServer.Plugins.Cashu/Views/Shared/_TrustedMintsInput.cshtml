@@ -4,7 +4,7 @@
 // model is a string separated by strings or newlines
 var existingUrls = string.IsNullOrEmpty(Model)
 ? new List<string>()
-: Model.Split(new[] { "\r\n", "\r", "\n", "," }, StringSplitOptions.RemoveEmptyEntries)
+: Model.Split(new[] { "\r\n", "\r", "\n", ";", "," }, StringSplitOptions.RemoveEmptyEntries)
 .Select(u => u.Trim())
 .Where(u => !string.IsNullOrWhiteSpace(u))
 .ToList();
@@ -63,7 +63,7 @@ var existingUrls = string.IsNullOrEmpty(Model)
 
         <textarea id="trustedMintsData"
                   name="TrustedMintsUrls"
-                  style="display: none;">@string.Join("\n", existingUrls)</textarea>
+                  style="display: none;">@string.Join(";", existingUrls)</textarea>
     </div>
     
     <!-- Modal -->
@@ -214,7 +214,7 @@ var existingUrls = string.IsNullOrEmpty(Model)
     (function() {
         const initialData = document.getElementById('trustedMintsData').value;
         const startMints = initialData
-            ? initialData.split('\n').map(u => u.trim()).filter(u => u.length > 0)
+            ? initialData.split(';').map(u => u.trim()).filter(u => u.length > 0)
             : [];
 
         const mintsState = {
@@ -376,7 +376,7 @@ var existingUrls = string.IsNullOrEmpty(Model)
             // update textarea
             elements.trustedMintsData.value = mintsState.mints
                 .map(m => m.url)
-                .join('\n');
+                .join(';');
         }
 
         if (elements.addMintBtn) {
