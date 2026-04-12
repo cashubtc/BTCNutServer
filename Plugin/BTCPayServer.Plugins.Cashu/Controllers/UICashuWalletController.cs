@@ -51,7 +51,7 @@ public class UICashuWalletController(
     public async Task<IActionResult> CashuWallet(string storeId)
     {
         await using var db = cashuDbContextFactory.CreateContext();
-        if (!db.CashuWalletConfig.Any(cwc => cwc.StoreId == StoreData.Id))
+        if (!await db.CashuWalletConfig.AnyAsync(cwc => cwc.StoreId == StoreData.Id))
         {
             return RedirectToAction(
                 "GettingStarted",
@@ -119,10 +119,10 @@ public class UICashuWalletController(
             .Select(x => (x.Mint, x.Unit, x.Amount))
             .ToList();
 
-        var exportedTokens = db
+        var exportedTokens = await db
             .ExportedTokens.Where(et => et.StoreId == StoreData.Id)
             .OrderByDescending(et => et.CreatedAt)
-            .ToList();
+            .ToListAsync();
 
         if (unavailableMints.Any())
         {
@@ -308,7 +308,7 @@ public class UICashuWalletController(
     public async Task<IActionResult> PostFailedTransaction(string storeId, Guid failedTransactionId)
     {
         await using var db = cashuDbContextFactory.CreateContext();
-        var failedTransaction = db.FailedTransactions.SingleOrDefault(t =>
+        var failedTransaction = await db.FailedTransactions.SingleOrDefaultAsync(t =>
             t.Id == failedTransactionId
         );
 
@@ -448,7 +448,7 @@ public class UICashuWalletController(
                         var spentTokens = new List<ExportedToken>();
                         foreach (var token in tokens.Where(t => t.Proofs is { Count: > 0 }))
                         {
-                            if (token.Proofs.Any(p => proofToSpent[p.ProofId]))
+                            if (token.Proofs.Any(p => proofToSpent.TryGetValue(p.ProofId, out var spent) && spent))
                                 spentTokens.Add(token);
                         }
 
