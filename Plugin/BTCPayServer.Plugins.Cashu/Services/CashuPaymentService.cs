@@ -237,6 +237,7 @@ public class CashuPaymentService(
                             LastRetried = DateTimeOffset.UtcNow,
                             MintUrl = ctx.Token.Mint,
                             InputProofs = ctx.Token.Proofs.ToArray(),
+                            InputAmount = ctx.Token.SumProofs,
                             OperationType = OperationType.Swap,
                             OutputData = swapResult.ProvidedOutputs,
                             Unit = ctx.Token.Unit,
