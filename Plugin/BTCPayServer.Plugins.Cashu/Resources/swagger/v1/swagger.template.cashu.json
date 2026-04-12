@@ -1,0 +1,767 @@
+{
+    "paths": {
+        "/api/v1/stores/{storeId}/cashu": {
+            "get": {
+                "tags": [ "Cashu" ],
+                "summary": "Get Cashu config",
+                "description": "Returns the Cashu payment method configuration for the store.",
+                "operationId": "Cashu_GetConfig",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cashu configuration",
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": "#/components/schemas/CashuConfigResponse" }
+                            }
+                        }
+                    },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canviewstoresettings" ], "Basic": [] }
+                ]
+            },
+            "put": {
+                "tags": [ "Cashu" ],
+                "summary": "Update Cashu config",
+                "description": "Updates the Cashu payment method configuration for the store. Omitted fields retain their current values.",
+                "operationId": "Cashu_UpdateConfig",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": { "$ref": "#/components/schemas/UpdateCashuConfigRequest" }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Updated Cashu configuration",
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": "#/components/schemas/CashuConfigResponse" }
+                            }
+                        }
+                    },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" },
+                    "404": { "$ref": "#/components/responses/NotFound" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canmodifystoresettings" ], "Basic": [] }
+                ]
+            }
+        },
+        "/api/v1/stores/{storeId}/cashu/wallet": {
+            "post": {
+                "tags": [ "Cashu" ],
+                "summary": "Create Cashu wallet",
+                "description": "Generates a new Cashu wallet for the store. Returns the 12-word mnemonic — store it safely. Fails if a wallet already exists.",
+                "operationId": "Cashu_CreateWallet",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Wallet created",
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": "#/components/schemas/WalletCreatedResponse" }
+                            }
+                        }
+                    },
+                    "400": { "$ref": "#/components/responses/BitpayError" },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canmodifystoresettings" ], "Basic": [] }
+                ]
+            },
+            "delete": {
+                "tags": [ "Cashu" ],
+                "summary": "Delete Cashu wallet",
+                "description": "Removes the Cashu wallet and all associated proofs, tokens, and config for the store.",
+                "operationId": "Cashu_DeleteWallet",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" }
+                ],
+                "responses": {
+                    "200": { "description": "Wallet deleted" },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canmodifystoresettings" ], "Basic": [] }
+                ]
+            }
+        },
+        "/api/v1/stores/{storeId}/cashu/wallet/restore": {
+            "post": {
+                "tags": [ "Cashu" ],
+                "summary": "Restore Cashu wallet",
+                "description": "Restores a Cashu wallet from an existing mnemonic. Optionally triggers a balance restore from provided mint URLs.",
+                "operationId": "Cashu_RestoreWallet",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": { "$ref": "#/components/schemas/RestoreWalletRequest" }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Restore started (or wallet created if no mint URLs provided)",
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": "#/components/schemas/RestoreStartedResponse" }
+                            }
+                        }
+                    },
+                    "400": { "$ref": "#/components/responses/BitpayError" },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canmodifystoresettings" ], "Basic": [] }
+                ]
+            },
+            "get": {
+                "tags": [ "Cashu" ],
+                "summary": "List restore jobs",
+                "description": "Returns all wallet restore jobs for the store.",
+                "operationId": "Cashu_GetRestoreStatuses",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of restore jobs",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": { "$ref": "#/components/schemas/RestoreStatusResponse" }
+                                }
+                            }
+                        }
+                    },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canviewstoresettings" ], "Basic": [] }
+                ]
+            }
+        },
+        "/api/v1/stores/{storeId}/cashu/wallet/restore/{jobId}": {
+            "get": {
+                "tags": [ "Cashu" ],
+                "summary": "Get restore job status",
+                "description": "Returns the status of a specific wallet restore job.",
+                "operationId": "Cashu_GetRestoreStatus",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" },
+                    {
+                        "name": "jobId",
+                        "in": "path",
+                        "required": true,
+                        "schema": { "type": "string" }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Restore job status",
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": "#/components/schemas/RestoreStatusResponse" }
+                            }
+                        }
+                    },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" },
+                    "404": { "$ref": "#/components/responses/NotFound" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canviewstoresettings" ], "Basic": [] }
+                ]
+            }
+        },
+        "/api/v1/stores/{storeId}/cashu/wallet/balances": {
+            "get": {
+                "tags": [ "Cashu" ],
+                "summary": "Get wallet balances",
+                "description": "Returns available balances grouped by mint and unit.",
+                "operationId": "Cashu_GetWalletBalances",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Wallet balances",
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": "#/components/schemas/WalletResponse" }
+                            }
+                        }
+                    },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canviewstoresettings" ], "Basic": [] }
+                ]
+            }
+        },
+        "/api/v1/stores/{storeId}/cashu/wallet/check-token-states": {
+            "post": {
+                "tags": [ "Cashu" ],
+                "summary": "Check exported token states",
+                "description": "Verifies all unspent exported tokens against their mints and marks spent ones.",
+                "operationId": "Cashu_CheckTokenStates",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Result of state check",
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": "#/components/schemas/CheckTokenStatesResponse" }
+                            }
+                        }
+                    },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canmodifystoresettings" ], "Basic": [] }
+                ]
+            }
+        },
+        "/api/v1/stores/{storeId}/cashu/wallet/spent-proofs": {
+            "delete": {
+                "tags": [ "Cashu" ],
+                "summary": "Remove spent proofs",
+                "description": "Checks all available proofs against their mints and removes ones already spent.",
+                "operationId": "Cashu_RemoveSpentProofs",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Result of removal",
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": "#/components/schemas/RemoveSpentProofsResponse" }
+                            }
+                        }
+                    },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canmodifystoresettings" ], "Basic": [] }
+                ]
+            }
+        },
+        "/api/v1/stores/{storeId}/cashu/wallet/export": {
+            "post": {
+                "tags": [ "Cashu" ],
+                "summary": "Export balance as Cashu token",
+                "description": "Selects all available proofs for the given mint and unit, marks them as exported, and returns a serialized Cashu token.",
+                "operationId": "Cashu_ExportBalance",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": { "$ref": "#/components/schemas/ExportBalanceRequest" }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Exported token",
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": "#/components/schemas/ExportedTokenResponse" }
+                            }
+                        }
+                    },
+                    "400": { "$ref": "#/components/responses/BitpayError" },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canmodifystoresettings" ], "Basic": [] }
+                ]
+            }
+        },
+        "/api/v1/stores/{storeId}/cashu/tokens": {
+            "get": {
+                "tags": [ "Cashu" ],
+                "summary": "List exported tokens",
+                "description": "Returns all exported Cashu tokens for the store, ordered by creation date descending.",
+                "operationId": "Cashu_GetExportedTokens",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of exported tokens",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": { "$ref": "#/components/schemas/ExportedTokenResponse" }
+                                }
+                            }
+                        }
+                    },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canviewstoresettings" ], "Basic": [] }
+                ]
+            }
+        },
+        "/api/v1/stores/{storeId}/cashu/tokens/{tokenId}": {
+            "get": {
+                "tags": [ "Cashu" ],
+                "summary": "Get exported token",
+                "description": "Returns details of a specific exported Cashu token including its proofs.",
+                "operationId": "Cashu_GetExportedToken",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" },
+                    {
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true,
+                        "schema": { "type": "string", "format": "uuid" }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Exported token",
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": "#/components/schemas/ExportedTokenResponse" }
+                            }
+                        }
+                    },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" },
+                    "404": { "$ref": "#/components/responses/NotFound" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canviewstoresettings" ], "Basic": [] }
+                ]
+            }
+        },
+        "/api/v1/stores/{storeId}/cashu/lightning-client-secret": {
+            "post": {
+                "tags": [ "Cashu" ],
+                "summary": "Generate lightning client secret",
+                "description": "Generates a new secret used for the Cashu Lightning client connection string. Fails if a secret already exists — use PUT to rotate.",
+                "operationId": "Cashu_GenerateLightningClientSecret",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Generated secret",
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": "#/components/schemas/LightningClientSecretResponse" }
+                            }
+                        }
+                    },
+                    "400": { "$ref": "#/components/responses/BitpaypoprError" },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canmodifystoresettings" ], "Basic": [] }
+                ]
+            },
+            "put": {
+                "tags": [ "Cashu" ],
+                "summary": "Rotate lightning client secret",
+                "description": "Replaces the existing lightning client secret with a newly generated one.",
+                "operationId": "Cashu_RotateLightningClientSecret",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "New secret",
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": "#/components/schemas/LightningClientSecretResponse" }
+                            }
+                        }
+                    },
+                    "400": { "$ref": "#/components/responses/BitpayError" },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" },
+                    "404": { "$ref": "#/components/responses/NotFound" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canmodifystoresettings" ], "Basic": [] }
+                ]
+            },
+            "delete": {
+                "tags": [ "Cashu" ],
+                "summary": "Revoke lightning client secret",
+                "description": "Removes the lightning client secret. The connection string using it will stop working.",
+                "operationId": "Cashu_RevokeLightningClientSecret",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" }
+                ],
+                "responses": {
+                    "200": { "description": "Secret revoked" },
+                    "400": { "$ref": "#/components/responses/BitpayError" },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" },
+                    "404": { "$ref": "#/components/responses/NotFound" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canmodifystoresettings" ], "Basic": [] }
+                ]
+            }
+        },
+        "/api/v1/stores/{storeId}/cashu/failed-transactions": {
+            "get": {
+                "tags": [ "Cashu" ],
+                "summary": "List failed transactions",
+                "description": "Returns all failed Cashu payment transactions for the store.",
+                "operationId": "Cashu_GetFailedTransactions",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of failed transactions",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": { "$ref": "#/components/schemas/FailedTransactionResponse" }
+                                }
+                            }
+                        }
+                    },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canviewstoresettings" ], "Basic": [] }
+                ]
+            }
+        },
+        "/api/v1/stores/{storeId}/cashu/failed-transactions/{failedTransactionId}/retry": {
+            "post": {
+                "tags": [ "Cashu" ],
+                "summary": "Retry failed transaction",
+                "description": "Re-polls a failed transaction against the mint. If resolved, registers the payment and marks the transaction as resolved.",
+                "operationId": "Cashu_RetryFailedTransaction",
+                "parameters": [
+                    { "$ref": "#/components/parameters/StoreId" },
+                    {
+                        "name": "failedTransactionId",
+                        "in": "path",
+                        "required": true,
+                        "schema": { "type": "string", "format": "uuid" }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Transaction resolved",
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": "#/components/schemas/FailedTransactionResponse" }
+                            }
+                        }
+                    },
+                    "400": { "$ref": "#/components/responses/BitpayError" },
+                    "401": { "$ref": "#/components/responses/Unauthenticated" },
+                    "403": { "$ref": "#/components/responses/Forbidden" },
+                    "404": { "$ref": "#/components/responses/NotFound" }
+                },
+                "security": [
+                    { "API_Key": [ "btcpay.store.canmodifystoresettings" ], "Basic": [] }
+                ]
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "CashuPaymentModel": {
+                "type": "string",
+                "enum": [ "TrustedMintsOnly", "HoldWhenTrusted", "AutoConvert" ],
+                "description": "TrustedMintsOnly: accept and hold tokens from trusted mints only. HoldWhenTrusted: hold tokens from trusted mints, reject others. AutoConvert: immediately convert received tokens to Lightning."
+            },
+            "CashuFeeConfigData": {
+                "type": "object",
+                "properties": {
+                    "maxKeysetFee": {
+                        "type": "integer",
+                        "description": "Maximum acceptable keyset fee in percent",
+                        "example": 3
+                    },
+                    "maxLightningFee": {
+                        "type": "integer",
+                        "description": "Maximum acceptable Lightning routing fee in percent",
+                        "example": 3
+                    },
+                    "customerFeeAdvance": {
+                        "type": "integer",
+                        "description": "Additional fee advance passed to the customer in percent",
+                        "example": 3
+                    }
+                }
+            },
+            "CashuConfigResponse": {
+                "type": "object",
+                "properties": {
+                    "enabled": {
+                        "type": "boolean",
+                        "description": "Whether the Cashu payment method is enabled for this store"
+                    },
+                    "paymentModel": {
+                        "$ref": "#/components/schemas/CashuPaymentModel"
+                    },
+                    "trustedMintsUrls": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "List of mint URLs the store trusts"
+                    },
+                    "feeConfig": {
+                        "$ref": "#/components/schemas/CashuFeeConfigData",
+                        "nullable": true
+                    }
+                }
+            },
+            "UpdateCashuConfigRequest": {
+                "type": "object",
+                "properties": {
+                    "enabled": {
+                        "type": "boolean",
+                        "nullable": true,
+                        "description": "Enable or disable the Cashu payment method. Omit to keep current value."
+                    },
+                    "paymentModel": {
+                        "$ref": "#/components/schemas/CashuPaymentModel",
+                        "nullable": true,
+                        "description": "Omit to keep current value."
+                    },
+                    "trustedMintsUrls": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "nullable": true,
+                        "description": "Trusted mint URLs. Omit to keep current value."
+                    },
+                    "feeConfig": {
+                        "$ref": "#/components/schemas/CashuFeeConfigData",
+                        "nullable": true,
+                        "description": "Fee configuration. Omit individual fields to keep current values."
+                    }
+                }
+            },
+            "WalletCreatedResponse": {
+                "type": "object",
+                "properties": {
+                    "mnemonic": {
+                        "type": "string",
+                        "description": "12-word BIP-39 mnemonic. Store this securely — it cannot be recovered.",
+                        "example": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+                    }
+                }
+            },
+            "RestoreWalletRequest": {
+                "type": "object",
+                "required": [ "mnemonic" ],
+                "properties": {
+                    "mnemonic": {
+                        "type": "string",
+                        "description": "12-word BIP-39 mnemonic to restore the wallet from"
+                    },
+                    "mintUrls": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "nullable": true,
+                        "description": "Optional list of mint URLs to scan for existing tokens. Triggers an async restore job if provided."
+                    }
+                }
+            },
+            "RestoreStartedResponse": {
+                "type": "object",
+                "properties": {
+                    "jobId": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "ID of the restore job, if mint URLs were provided. Use to poll status."
+                    }
+                }
+            },
+            "RestoredMintResponse": {
+                "type": "object",
+                "properties": {
+                    "mintUrl": { "type": "string" },
+                    "balances": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "integer",
+                            "format": "uint64"
+                        },
+                        "description": "Restored balance per unit (e.g. {\"sat\": 1000})"
+                    }
+                }
+            },
+            "RestoreStatusResponse": {
+                "type": "object",
+                "properties": {
+                    "jobId": { "type": "string" },
+                    "status": {
+                        "type": "string",
+                        "enum": [ "Queued", "Running", "Completed", "Failed" ]
+                    },
+                    "totalMints": { "type": "integer" },
+                    "processedMints": { "type": "integer" },
+                    "unreachableMints": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    },
+                    "errors": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    },
+                    "queuedAt": { "type": "string", "format": "date-time" },
+                    "startedAt": { "type": "string", "format": "date-time", "nullable": true },
+                    "completedAt": { "type": "string", "format": "date-time", "nullable": true },
+                    "restoredMints": {
+                        "type": "array",
+                        "items": { "$ref": "#/components/schemas/RestoredMintResponse" }
+                    }
+                }
+            },
+            "LightningClientSecretResponse": {
+                "type": "object",
+                "properties": {
+                    "secret": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "The secret used in the Cashu Lightning connection string (type=cashu;mint-url=...;store-id=...;secret=<value>)"
+                    }
+                }
+            },
+            "WalletBalanceItem": {
+                "type": "object",
+                "properties": {
+                    "mint": { "type": "string", "description": "Mint URL" },
+                    "unit": { "type": "string", "description": "Token unit (e.g. sat)" },
+                    "amount": { "type": "integer", "format": "uint64" }
+                }
+            },
+            "WalletResponse": {
+                "type": "object",
+                "properties": {
+                    "balances": {
+                        "type": "array",
+                        "items": { "$ref": "#/components/schemas/WalletBalanceItem" },
+                        "description": "Available balances ordered by amount descending"
+                    },
+                    "unavailableMints": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Mints that could not be reached during the balance check"
+                    }
+                }
+            },
+            "CheckTokenStatesResponse": {
+                "type": "object",
+                "properties": {
+                    "markedSpent": {
+                        "type": "integer",
+                        "description": "Number of tokens marked as spent"
+                    },
+                    "failedMints": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Mints that could not be reached"
+                    }
+                }
+            },
+            "RemoveSpentProofsResponse": {
+                "type": "object",
+                "properties": {
+                    "removed": {
+                        "type": "integer",
+                        "description": "Number of spent proofs removed"
+                    },
+                    "failedMints": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Mints that could not be reached"
+                    }
+                }
+            },
+            "ExportBalanceRequest": {
+                "type": "object",
+                "required": [ "mintUrl", "unit" ],
+                "properties": {
+                    "mintUrl": { "type": "string", "description": "Mint to export from" },
+                    "unit": { "type": "string", "description": "Token unit to export (e.g. sat)" }
+                }
+            },
+            "ExportedTokenResponse": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "format": "uuid" },
+                    "amount": { "type": "integer", "format": "uint64" },
+                    "unit": { "type": "string" },
+                    "mint": { "type": "string" },
+                    "token": {
+                        "type": "string",
+                        "description": "Serialized Cashu token (cashuA...)"
+                    },
+                    "isUsed": {
+                        "type": "boolean",
+                        "description": "Whether this token has been detected as spent"
+                    },
+                    "createdAt": { "type": "string", "format": "date-time" }
+                }
+            },
+            "FailedTransactionResponse": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "format": "uuid" },
+                    "invoiceId": { "type": "string" },
+                    "mintUrl": { "type": "string" },
+                    "unit": { "type": "string" },
+                    "inputAmount": { "type": "integer", "format": "uint64" },
+                    "operationType": { "type": "string" },
+                    "retryCount": { "type": "integer" },
+                    "lastRetried": { "type": "string", "format": "date-time" },
+                    "resolved": { "type": "boolean" },
+                    "details": { "type": "string", "nullable": true }
+                }
+            }
+        }
+    }
+}
