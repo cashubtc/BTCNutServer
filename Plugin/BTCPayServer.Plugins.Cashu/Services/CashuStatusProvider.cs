@@ -1,14 +1,17 @@
 using System.Threading.Tasks;
 using BTCPayServer.Data;
+using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
+using Microsoft.EntityFrameworkCore;
 
 namespace BTCPayServer.Plugins.Cashu.PaymentHandlers;
 
 public class CashuStatusProvider(
     StoreRepository storeRepository,
-    PaymentMethodHandlerDictionary handlers
+    PaymentMethodHandlerDictionary handlers,
+    CashuDbContextFactory cashuDbContextFactory
 )
 {
     public async Task<bool> CashuEnabled(string storeId)
@@ -40,9 +43,16 @@ public class CashuStatusProvider(
             }
 
             var excludeFilters = storeData.GetStoreBlob().GetExcludedPaymentMethods();
-            var enabled = !excludeFilters.Match(CashuPlugin.CashuPmid);
+            if (excludeFilters.Match(CashuPlugin.CashuPmid))
+            {
+                return false;
+            }
 
-            return enabled;
+            await using var db = cashuDbContextFactory.CreateContext();
+            var hasWallet = await db.CashuWalletConfig
+                .AnyAsync(c => c.StoreId == storeId && c.WalletMnemonic != null);
+
+            return hasWallet;
         }
         catch
         {
