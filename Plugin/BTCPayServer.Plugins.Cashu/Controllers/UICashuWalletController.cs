@@ -164,8 +164,9 @@ public class UICashuWalletController(
                 throw new Exception("No keysets were found.");
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            logger.LogDebug(ex, "(Cashu) Failed to get keysets for mint {Mint}", mintUrl);
             TempData[WellKnownTempData.ErrorMessage] = "Couldn't get keysets!";
             return RedirectToAction("CashuWallet", new { storeId = StoreData.Id });
         }
