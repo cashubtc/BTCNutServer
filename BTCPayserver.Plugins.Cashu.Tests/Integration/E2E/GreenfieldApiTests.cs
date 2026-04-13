@@ -62,7 +62,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
     }
 
-    private async Task<string> CreateInvoiceAsync(HttpClient http, string storeId, decimal amount = 100, string currency = "SAT")
+    private async Task<string> CreateInvoiceAsync(HttpClient http, string storeId, decimal amount = 100, string currency = "SATS")
     {
         var r = await http.PostAsync($"/api/v1/stores/{storeId}/invoices", Json(new { amount, currency }));
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
@@ -743,7 +743,8 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         await CreateWalletAsync(http, storeId);
         await EnableCashuAsync(http, storeId);
 
-        var invoiceId = await CreateInvoiceAsync(http, storeId, amount: 100, currency: "SAT");
+        // im pretty sure that we have quite some time b4 100usd be less than 1sat, but i'll be happy to fix that
+        var invoiceId = await CreateInvoiceAsync(http, storeId, amount: 100, currency: "USD");
         var token = await PlaywrightTesterCashuUtils.MintCashuTokenAsync(1);
 
         var r = await http.PostAsync("/cashu/pay-invoice",
@@ -772,7 +773,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
 
         await CreateWalletAsync(http, storeId);
         await EnableCashuAsync(http, storeId);
-        var invoiceId = await CreateInvoiceAsync(http, storeId, amount: 100, currency: "SAT");
+        var invoiceId = await CreateInvoiceAsync(http, storeId, amount: 100, currency: "SATS");
 
         var token = await PlaywrightTesterCashuUtils.MintCashuTokenAsync(200);
 
