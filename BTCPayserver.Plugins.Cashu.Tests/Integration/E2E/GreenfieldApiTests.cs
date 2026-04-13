@@ -44,6 +44,33 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
     }
 
 
+    private async Task CreateWalletAsync(HttpClient http, string storeId)
+    {
+        var r = await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet", Json(new { }));
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+    }
+
+    private async Task EnableCashuAsync(HttpClient http, string storeId, string? mintUrl = null)
+    {
+        mintUrl ??= CdkMintUrl;
+        var r = await http.PutAsync($"/api/v1/stores/{storeId}/cashu", Json(new
+        {
+            enabled = true,
+            paymentModel = "TrustedMintsOnly",
+            trustedMintsUrls = new[] { mintUrl }
+        }));
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+    }
+
+    private async Task<string> CreateInvoiceAsync(HttpClient http, string storeId, decimal amount = 100, string currency = "SAT")
+    {
+        var r = await http.PostAsync($"/api/v1/stores/{storeId}/invoices", Json(new { amount, currency }));
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var id = (await ReadJson(r)).GetProperty("id").GetString();
+        Assert.NotNull(id);
+        return id!;
+    }
+
     private async Task<ulong> FundWalletAsync(
         PlaywrightTester s,
         string storeId,
@@ -59,12 +86,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         }));
         Assert.Equal(HttpStatusCode.OK, restoreResp.StatusCode);
 
-        await http.PutAsync($"/api/v1/stores/{storeId}/cashu", Json(new
-        {
-            enabled = true,
-            paymentModel = "TrustedMintsOnly",
-            trustedMintsUrls = new[] { CdkMintUrl }
-        }));
+        await EnableCashuAsync(http, storeId);
 
         var invoiceId = await s.CreateInvoice(storeId, amount: 1, currency: "USD");
         var token = await PlaywrightTesterCashuUtils.MintCashuTokenAsync(amountSat);
@@ -112,7 +134,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         var (s, storeId, http) = await SetupAsync(Policies.CanModifyStoreSettings);
         await using var _ = s;
 
-        await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet", Json(new { }));
+        await CreateWalletAsync(http, storeId);
 
         var r = await http.PutAsync($"/api/v1/stores/{storeId}/cashu", Json(new
         {
@@ -257,7 +279,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         );
         await using var _ = s;
 
-        await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet", Json(new { }));
+        await CreateWalletAsync(http, storeId);
 
         var r = await http.GetAsync($"/api/v1/stores/{storeId}/cashu/wallet/balances");
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
@@ -272,13 +294,12 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         var (s, storeId, http) = await SetupAsync(Policies.CanModifyStoreSettings);
         await using var _ = s;
 
-        await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet", Json(new { }));
+        await CreateWalletAsync(http, storeId);
 
         var del = await http.DeleteAsync($"/api/v1/stores/{storeId}/cashu/wallet");
         Assert.Equal(HttpStatusCode.OK, del.StatusCode);
 
-        var r2 = await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet", Json(new { }));
-        Assert.Equal(HttpStatusCode.OK, r2.StatusCode);
+        await CreateWalletAsync(http, storeId);
     }
 
     [Fact]
@@ -287,7 +308,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         var (s, storeId, http) = await SetupAsync(Policies.CanModifyStoreSettings);
         await using var _ = s;
 
-        await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet", Json(new { }));
+        await CreateWalletAsync(http, storeId);
 
         var r = await http.PostAsync(
             $"/api/v1/stores/{storeId}/cashu/wallet/check-token-states",
@@ -305,7 +326,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         var (s, storeId, http) = await SetupAsync(Policies.CanModifyStoreSettings);
         await using var _ = s;
 
-        await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet", Json(new { }));
+        await CreateWalletAsync(http, storeId);
 
         var r = await http.DeleteAsync($"/api/v1/stores/{storeId}/cashu/wallet/spent-proofs");
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
@@ -320,7 +341,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         var (s, storeId, http) = await SetupAsync(Policies.CanModifyStoreSettings);
         await using var _ = s;
 
-        await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet", Json(new { }));
+        await CreateWalletAsync(http, storeId);
 
         var r = await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet/export", Json(new
         {
@@ -417,7 +438,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         var (s, storeId, http) = await SetupAsync(Policies.CanModifyStoreSettings);
         await using var tester = s;
 
-        await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet", Json(new { }));
+        await CreateWalletAsync(http, storeId);
 
         var r = await http.PostAsync(
             $"/api/v1/stores/{storeId}/cashu/lightning-client-secret",
@@ -437,7 +458,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         var (s, storeId, http) = await SetupAsync(Policies.CanModifyStoreSettings);
         await using var _ = s;
 
-        await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet", Json(new { }));
+        await CreateWalletAsync(http, storeId);
         await http.PostAsync(
             $"/api/v1/stores/{storeId}/cashu/lightning-client-secret",
             Json(new { })
@@ -459,7 +480,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         var (s, storeId, http) = await SetupAsync(Policies.CanModifyStoreSettings);
         await using var _ = s;
 
-        await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet", Json(new { }));
+        await CreateWalletAsync(http, storeId);
 
         var gen = await http.PostAsync(
             $"/api/v1/stores/{storeId}/cashu/lightning-client-secret",
@@ -484,7 +505,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         var (s, storeId, http) = await SetupAsync(Policies.CanModifyStoreSettings);
         await using var _ = s;
 
-        await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet", Json(new { }));
+        await CreateWalletAsync(http, storeId);
         await http.PostAsync(
             $"/api/v1/stores/{storeId}/cashu/lightning-client-secret",
             Json(new { })
@@ -712,26 +733,17 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
     [Fact]
     public async Task PayInvoice_InsufficientToken_Returns400()
     {
-        var mnemonic = new Mnemonic(Wordlist.English, WordCount.Twelve).ToString();
         var (s, storeId, http) = await SetupAsync(
             Policies.CanViewStoreSettings,
-            Policies.CanModifyStoreSettings
+            Policies.CanModifyStoreSettings,
+            Policies.CanCreateInvoice
         );
         await using var _ = s;
 
-        await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet/restore", Json(new
-        {
-            mnemonic,
-            mintUrls = new[] { CdkMintUrl }
-        }));
-        await http.PutAsync($"/api/v1/stores/{storeId}/cashu", Json(new
-        {
-            enabled = true,
-            paymentModel = "TrustedMintsOnly",
-            trustedMintsUrls = new[] { CdkMintUrl }
-        }));
+        await CreateWalletAsync(http, storeId);
+        await EnableCashuAsync(http, storeId);
 
-        var invoiceId = await s.CreateInvoice(storeId, amount: 100, currency: "SAT");
+        var invoiceId = await CreateInvoiceAsync(http, storeId, amount: 100, currency: "SAT");
         var token = await PlaywrightTesterCashuUtils.MintCashuTokenAsync(1);
 
         var r = await http.PostAsync("/cashu/pay-invoice",
@@ -749,39 +761,30 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
     }
 
     [Fact]
-    public async Task PayInvoice_ValidToken_Returns200WithRedirectUrl()
+    public async Task FullSetupViaApi_ReceiveCashuPayment_Returns200()
     {
-        var mnemonic = new Mnemonic(Wordlist.English, WordCount.Twelve).ToString();
         var (s, storeId, http) = await SetupAsync(
             Policies.CanViewStoreSettings,
-            Policies.CanModifyStoreSettings
+            Policies.CanModifyStoreSettings,
+            Policies.CanCreateInvoice
         );
         await using var _ = s;
 
-        await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet/restore", Json(new
-        {
-            mnemonic,
-            mintUrls = new[] { CdkMintUrl }
-        }));
-        await http.PutAsync($"/api/v1/stores/{storeId}/cashu", Json(new
-        {
-            enabled = true,
-            paymentModel = "TrustedMintsOnly",
-            trustedMintsUrls = new[] { CdkMintUrl }
-        }));
+        await CreateWalletAsync(http, storeId);
+        await EnableCashuAsync(http, storeId);
+        var invoiceId = await CreateInvoiceAsync(http, storeId, amount: 100, currency: "SAT");
 
-        var invoiceId = await s.CreateInvoice(storeId, amount: 1, currency: "USD");
         var token = await PlaywrightTesterCashuUtils.MintCashuTokenAsync(200);
 
-        var r = await http.PostAsync("/cashu/pay-invoice",
+        var payResp = await http.PostAsync("/cashu/pay-invoice",
             new FormUrlEncodedContent([
                 new KeyValuePair<string, string>("token", token),
-                new KeyValuePair<string, string>("invoiceId", invoiceId)
+                new KeyValuePair<string, string>("invoiceId", invoiceId!)
             ]));
 
-        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
-        var json = await ReadJson(r);
-        var redirectUrl = json.GetProperty("redirectUrl").GetString();
+        Assert.Equal(HttpStatusCode.OK, payResp.StatusCode);
+        var payJson = await ReadJson(payResp);
+        var redirectUrl = payJson.GetProperty("redirectUrl").GetString();
         helper.WriteLine($"Redirect URL: {redirectUrl}");
         Assert.NotNull(redirectUrl);
         Assert.Contains(invoiceId, redirectUrl);
