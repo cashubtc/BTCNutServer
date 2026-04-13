@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using BTCPayServer.Plugins.Cashu.Data.enums;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 
 namespace BTCPayServer.Plugins.Cashu.Models;
 
 public record CashuConfigResponseDto(
     bool Enabled,
-    CashuPaymentModel PaymentModel,
+    [property: JsonConverter(typeof(StringEnumConverter))] CashuPaymentModel PaymentModel,
     List<string> TrustedMintsUrls,
     CashuFeeConfigDto? FeeConfig
 );
@@ -19,7 +21,7 @@ public record CashuFeeConfigDto(
 
 public record UpdateCashuConfigRequestDto(
     bool? Enabled,
-    CashuPaymentModel? PaymentModel,
+    [property: JsonConverter(typeof(StringEnumConverter))] CashuPaymentModel? PaymentModel,
     List<string>? TrustedMintsUrls,
     CashuFeeConfigDto? FeeConfig
 );
