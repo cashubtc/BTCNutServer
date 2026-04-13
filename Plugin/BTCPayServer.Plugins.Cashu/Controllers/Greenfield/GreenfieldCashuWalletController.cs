@@ -76,7 +76,7 @@ public class GreenfieldCashuWalletController(
         Mnemonic mnemonic;
         try
         {
-            mnemonic = new Mnemonic(request.Mnemonic, Wordlist.English);
+            mnemonic = new Mnemonic(request.Mnemonic);
         }
         catch
         {
