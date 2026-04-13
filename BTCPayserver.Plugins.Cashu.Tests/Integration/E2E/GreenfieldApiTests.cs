@@ -101,7 +101,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
             trustedMintsUrls = new[] { CdkMintUrl }
         }));
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
         var json = await ReadJson(r);
         Assert.Equal("paymentmethod-not-configured", json.GetProperty("code").GetString());
     }
@@ -164,7 +164,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         Assert.Equal(HttpStatusCode.OK, r1.StatusCode);
 
         var r2 = await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet", Json(new { }));
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, r2.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, r2.StatusCode);
 
         var json = await ReadJson(r2);
         Assert.Equal("wallet-already-exists", json.GetProperty("code").GetString());
@@ -201,7 +201,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
             mintUrls = new[] { CdkMintUrl }
         }));
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
         var json = await ReadJson(r);
         Assert.Equal("invalid-mnemonic", json.GetProperty("code").GetString());
     }
@@ -328,7 +328,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
             unit = "sat"
         }));
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
         var json = await ReadJson(r);
         var code = json.GetProperty("code").GetString();
         // mint may be unreachable in test env (mint-unavailable) or simply no proofs (no-proofs)
@@ -448,7 +448,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
             Json(new { })
         );
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, r2.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, r2.StatusCode);
         var json = await ReadJson(r2);
         Assert.Equal("secret-already-exists", json.GetProperty("code").GetString());
     }
@@ -665,5 +665,125 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         // token was exported but not redeemed yet, markedSpent should be 0
         Assert.Equal(0, json.GetProperty("markedSpent").GetInt32());
         helper.WriteLine($"CheckTokenStates result: {json}");
+    }
+
+
+    [Fact]
+    public async Task PayInvoice_InvalidToken_Returns400()
+    {
+        var s = CreatePlaywrightTester();
+        await s.StartAsync();
+        await using var _ = s;
+
+        var http = new HttpClient { BaseAddress = s.ServerUri };
+
+        var r = await http.PostAsync("/cashu/pay-invoice",
+            new FormUrlEncodedContent([
+                new KeyValuePair<string, string>("token", "not-a-valid-cashu-token"),
+                new KeyValuePair<string, string>("invoiceId", "some-invoice-id")
+            ]));
+
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        var json = await ReadJson(r);
+        Assert.NotNull(json.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task PayInvoice_UnknownInvoiceId_Returns400()
+    {
+        var s = CreatePlaywrightTester();
+        await s.StartAsync();
+        await using var _ = s;
+
+        var token = await PlaywrightTesterCashuUtils.MintCashuTokenAsync(100);
+
+        var http = new HttpClient { BaseAddress = s.ServerUri };
+        var r = await http.PostAsync("/cashu/pay-invoice",
+            new FormUrlEncodedContent([
+                new KeyValuePair<string, string>("token", token),
+                new KeyValuePair<string, string>("invoiceId", "nonexistent-invoice-id")
+            ]));
+
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        var json = await ReadJson(r);
+        Assert.Equal("Invalid invoice", json.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task PayInvoice_InsufficientToken_Returns400()
+    {
+        var mnemonic = new Mnemonic(Wordlist.English, WordCount.Twelve).ToString();
+        var (s, storeId, http) = await SetupAsync(
+            Policies.CanViewStoreSettings,
+            Policies.CanModifyStoreSettings
+        );
+        await using var _ = s;
+
+        await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet/restore", Json(new
+        {
+            mnemonic,
+            mintUrls = new[] { CdkMintUrl }
+        }));
+        await http.PutAsync($"/api/v1/stores/{storeId}/cashu", Json(new
+        {
+            enabled = true,
+            paymentModel = "TrustedMintsOnly",
+            trustedMintsUrls = new[] { CdkMintUrl }
+        }));
+
+        var invoiceId = await s.CreateInvoice(storeId, amount: 100, currency: "SAT");
+        var token = await PlaywrightTesterCashuUtils.MintCashuTokenAsync(1);
+
+        var r = await http.PostAsync("/cashu/pay-invoice",
+            new FormUrlEncodedContent([
+                new KeyValuePair<string, string>("token", token),
+                new KeyValuePair<string, string>("invoiceId", invoiceId)
+            ]));
+
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        var json = await ReadJson(r);
+        var error = json.GetProperty("error").GetString();
+        helper.WriteLine($"Error: {error}");
+        Assert.NotNull(error);
+        Assert.Contains("sat", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PayInvoice_ValidToken_Returns200WithRedirectUrl()
+    {
+        var mnemonic = new Mnemonic(Wordlist.English, WordCount.Twelve).ToString();
+        var (s, storeId, http) = await SetupAsync(
+            Policies.CanViewStoreSettings,
+            Policies.CanModifyStoreSettings
+        );
+        await using var _ = s;
+
+        await http.PostAsync($"/api/v1/stores/{storeId}/cashu/wallet/restore", Json(new
+        {
+            mnemonic,
+            mintUrls = new[] { CdkMintUrl }
+        }));
+        await http.PutAsync($"/api/v1/stores/{storeId}/cashu", Json(new
+        {
+            enabled = true,
+            paymentModel = "TrustedMintsOnly",
+            trustedMintsUrls = new[] { CdkMintUrl }
+        }));
+
+        var invoiceId = await s.CreateInvoice(storeId, amount: 1, currency: "USD");
+        var token = await PlaywrightTesterCashuUtils.MintCashuTokenAsync(200);
+
+        var r = await http.PostAsync("/cashu/pay-invoice",
+            new FormUrlEncodedContent([
+                new KeyValuePair<string, string>("token", token),
+                new KeyValuePair<string, string>("invoiceId", invoiceId)
+            ]));
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var json = await ReadJson(r);
+        var redirectUrl = json.GetProperty("redirectUrl").GetString();
+        helper.WriteLine($"Redirect URL: {redirectUrl}");
+        Assert.NotNull(redirectUrl);
+        Assert.Contains(invoiceId, redirectUrl);
     }
 }
