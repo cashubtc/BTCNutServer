@@ -57,7 +57,7 @@ public class UICashuStoresController : Controller
         );
         {
             await using var db = _cashuDbContextFactory.CreateContext();
-            var config = db.CashuWalletConfig.FirstOrDefault(cwc => cwc.StoreId == StoreData.Id);
+            var config = await db.CashuWalletConfig.FirstOrDefaultAsync(cwc => cwc.StoreId == StoreData.Id);
             if (config == null)
             {
                 return RedirectToAction(
@@ -90,7 +90,7 @@ public class UICashuStoresController : Controller
             model.Enabled = await _cashuStatusProvider.CashuEnabled(StoreData.Id);
             model.PaymentAcceptanceModel = cashuPaymentMethodConfig.PaymentModel;
             model.TrustedMintsUrls = String.Join(
-                "\n",
+                ";",
                 cashuPaymentMethodConfig.TrustedMintsUrls
             );
         }
@@ -109,7 +109,7 @@ public class UICashuStoresController : Controller
         viewModel.TrustedMintsUrls ??= "";
 
         var parsedTrustedMintsUrls = viewModel
-            .TrustedMintsUrls.Split(["\r\n", "\r", "\n"], StringSplitOptions.RemoveEmptyEntries)
+            .TrustedMintsUrls.Split(["\r\n", "\r", "\n", ";"], StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.Trim())
             .Where(line => !string.IsNullOrWhiteSpace(line))
             .Select(MintManager.NormalizeMintUrl)
@@ -181,7 +181,7 @@ public class UICashuStoresController : Controller
             };
 
         await using var db = _cashuDbContextFactory.CreateContext();
-        var walletConfig = db.CashuWalletConfig.SingleOrDefault(cwc => cwc.StoreId == storeId);
+        var walletConfig = await db.CashuWalletConfig.SingleOrDefaultAsync(cwc => cwc.StoreId == storeId);
 
         var model = new CashuSettingsViewModel
         {
@@ -262,7 +262,7 @@ public class UICashuStoresController : Controller
     public async Task<IActionResult> GenerateLightningClientSecret(string storeId)
     {
         await using var db = _cashuDbContextFactory.CreateContext();
-        var walletConfig = db.CashuWalletConfig.SingleOrDefault(cwc => cwc.StoreId == storeId);
+        var walletConfig = await db.CashuWalletConfig.SingleOrDefaultAsync(cwc => cwc.StoreId == storeId);
 
         if (walletConfig == null)
         {
@@ -287,7 +287,7 @@ public class UICashuStoresController : Controller
     public async Task<IActionResult> RotateLightningClientSecret(string storeId)
     {
         await using var db = _cashuDbContextFactory.CreateContext();
-        var walletConfig = db.CashuWalletConfig.SingleOrDefault(cwc => cwc.StoreId == storeId);
+        var walletConfig = await db.CashuWalletConfig.SingleOrDefaultAsync(cwc => cwc.StoreId == storeId);
 
         if (walletConfig == null)
         {

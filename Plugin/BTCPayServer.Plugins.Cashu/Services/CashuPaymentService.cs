@@ -237,6 +237,7 @@ public class CashuPaymentService(
                             LastRetried = DateTimeOffset.UtcNow,
                             MintUrl = ctx.Token.Mint,
                             InputProofs = ctx.Token.Proofs.ToArray(),
+                            InputAmount = ctx.Token.SumProofs,
                             OperationType = OperationType.Swap,
                             OutputData = swapResult.ProvidedOutputs,
                             Unit = ctx.Token.Unit,
@@ -395,7 +396,7 @@ public class CashuPaymentService(
                     {
                         // if it's null it means it's already paid or expired
                         Expiry = DateTimeOffset.FromUnixTimeSeconds(
-                            meltQuoteResponse.MeltQuote.Expiry ?? DateTime.Now.UnixTimestamp()
+                            meltQuoteResponse.MeltQuote.Expiry ?? DateTime.UtcNow.UnixTimestamp()
                         ),
                         LightningInvoiceId = meltQuoteResponse.Invoice!.Id,
                         MeltQuoteId = meltResponse.Quote!.Quote,
@@ -454,11 +455,11 @@ public class CashuPaymentService(
                 MeltDetails = new MeltDetails
                 {
                     Expiry = DateTimeOffset.FromUnixTimeSeconds(
-                        meltQuoteResponse.MeltQuote.Expiry ?? DateTime.Now.UnixTimestamp()
+                        meltQuoteResponse.MeltQuote.Expiry ?? DateTime.UtcNow.UnixTimestamp()
                     ),
                     LightningInvoiceId = meltQuoteResponse.Invoice!.Id,
                     MeltQuoteId = meltResponse.Quote!.Quote,
-                    // Assert status as pending, even if it's paid - lightning invoice has to be paid
+                    // Assert status as pending, even if it's paid - lightning invoice has to be paid       
                     Status = "PENDING",
                 },
                 RetryCount = 1,
@@ -523,7 +524,7 @@ public class CashuPaymentService(
                 MeltDetails = new MeltDetails
                 {
                     Expiry = DateTimeOffset.FromUnixTimeSeconds(
-                        meltQuoteResponse.MeltQuote.Expiry ?? DateTime.Now.UnixTimestamp()
+                        meltQuoteResponse.MeltQuote.Expiry ?? DateTime.UtcNow.UnixTimestamp()
                     ),
                     LightningInvoiceId = meltQuoteResponse.Invoice!.Id,
                     MeltQuoteId = meltResponse.Quote!.Quote,
@@ -706,7 +707,7 @@ public class CashuPaymentService(
         //if it's unpaid and it was unpaid let's assume it's pending untill timeout
         if (currentMeltState.State == "UNPAID")
         {
-            return prevMeltState.Expiry <= new DateTimeOffset(DateTime.Now)
+            return prevMeltState.Expiry <= new DateTimeOffset(DateTime.UtcNow)
                 ? CashuPaymentState.Failed
                 : CashuPaymentState.Pending;
         }

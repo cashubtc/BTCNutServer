@@ -290,7 +290,7 @@ public class CashuLightningClient(
     {
         await using var db = dbContextFactory.CreateContext();
         await using var tx = await db.Database.BeginTransactionAsync(cancellation);
-        var config = db.CashuWalletConfig.SingleOrDefault(w => w.StoreId == storeId);
+        var config = await db.CashuWalletConfig.SingleOrDefaultAsync(w => w.StoreId == storeId);
         if (config == null)
             throw new InvalidOperationException($"Could not fetch cashu wallet config for storeId: {storeId}");
         if (secret == null || !Guid.TryParse(secret, out var parsed) || parsed != config.LightningClientSecret)

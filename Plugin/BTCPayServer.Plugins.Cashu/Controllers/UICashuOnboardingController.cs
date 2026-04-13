@@ -54,7 +54,7 @@ public class UICashuOnboardingController : Controller
     public async Task<IActionResult> GettingStarted(string storeId)
     {
         await using var db = _cashuDbContextFactory.CreateContext();
-        if (StoreData == null || db.CashuWalletConfig.Any(cwc => cwc.StoreId == StoreData.Id))
+        if (StoreData == null || await db.CashuWalletConfig.AnyAsync(cwc => cwc.StoreId == StoreData.Id))
         {
             return NotFound();
         }
