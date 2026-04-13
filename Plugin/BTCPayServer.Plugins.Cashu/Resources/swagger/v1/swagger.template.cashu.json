@@ -507,10 +507,110 @@
                     { "API_Key": [ "btcpay.store.canmodifystoresettings" ], "Basic": [] }
                 ]
             }
+        },
+        "/cashu/pay-invoice": {
+            "post": {
+                "tags": [ "Cashu" ],
+                "summary": "Pay invoice with Cashu token",
+                "description": "Pays a BTCPay invoice by submitting a Cashu token. No authentication required — intended for checkout flows. Returns a redirect URL to the invoice receipt on success.",
+                "operationId": "Cashu_PayInvoice",
+                "parameters": [
+                    {
+                        "name": "token",
+                        "in": "query",
+                        "required": true,
+                        "schema": { "type": "string" },
+                        "description": "cashuB-encoded Cashu token (v4)"
+                    },
+                    {
+                        "name": "invoiceId",
+                        "in": "query",
+                        "required": true,
+                        "schema": { "type": "string" },
+                        "description": "BTCPay invoice ID to pay"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Payment accepted",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "redirectUrl": { "type": "string", "description": "URL to the invoice receipt page" }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Payment error (invalid token, insufficient funds, untrusted mint, etc.)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": { "type": "string" }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "502": { "description": "System error while processing payment" },
+                    "504": { "description": "Payment request timed out" }
+                }
+            }
+        },
+        "/cashu/pay-invoice-pr": {
+            "post": {
+                "tags": [ "Cashu" ],
+                "summary": "Pay invoice via NUT-19 payment request",
+                "description": "Pays a BTCPay invoice using a NUT-19 payment request payload (raw proofs). No authentication required.",
+                "operationId": "Cashu_PayInvoicePr",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": { "$ref": "#/components/schemas/PaymentRequestPayload" }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "Payment sent" },
+                    "400": { "description": "Payment error" },
+                    "502": { "description": "System error while processing payment" },
+                    "504": { "description": "Payment request timed out" }
+                }
+            }
         }
     },
     "components": {
         "schemas": {
+            "PaymentRequestPayload": {
+                "type": "object",
+                "required": [ "id", "mint", "unit", "proofs" ],
+                "properties": {
+                    "id": { "type": "string", "description": "BTCPay invoice ID" },
+                    "mint": { "type": "string", "description": "Mint URL the proofs are from" },
+                    "unit": { "type": "string", "example": "sat" },
+                    "memo": { "type": "string", "nullable": true },
+                    "proofs": {
+                        "type": "array",
+                        "items": { "$ref": "#/components/schemas/CashuProof" }
+                    }
+                }
+            },
+            "CashuProof": {
+                "type": "object",
+                "required": [ "amount", "id", "secret", "C" ],
+                "properties": {
+                    "amount": { "type": "integer", "format": "int64" },
+                    "id": { "type": "string", "description": "Keyset ID" },
+                    "secret": { "type": "string" },
+                    "C": { "type": "string", "description": "Unblinded signature (compressed public key, hex)" }
+                }
+            },
             "CashuPaymentModel": {
                 "type": "string",
                 "enum": [ "TrustedMintsOnly", "HoldWhenTrusted", "AutoConvert" ],
