@@ -15,7 +15,7 @@ namespace BTCPayserver.Plugins.Cashu.Tests.Integration.E2E;
 public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
 {
     private string CdkMintUrl => PlaywrightTesterCashuUtils.GetCdkMintUrl();
-    
+
     private static StringContent Json(object payload) =>
         new(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
@@ -24,7 +24,7 @@ public class GreenfieldApiTests(ITestOutputHelper helper) : UnitTestBase(helper)
         var body = await r.Content.ReadAsStringAsync();
         return JsonDocument.Parse(body).RootElement;
     }
-    
+
     private async Task<(PlaywrightTester s, string storeId, HttpClient http)> SetupAsync(
         params string[] policies
     )

@@ -455,7 +455,7 @@ public class CashuPaymentService(
                 MeltDetails = new MeltDetails
                 {
                     Expiry = DateTimeOffset.FromUnixTimeSeconds(
-                        meltQuoteResponse.MeltQuote.Expiry ?? DateTime.UtcNow.UnixTimestamp()       
+                        meltQuoteResponse.MeltQuote.Expiry ?? DateTime.UtcNow.UnixTimestamp()
                     ),
                     LightningInvoiceId = meltQuoteResponse.Invoice!.Id,
                     MeltQuoteId = meltResponse.Quote!.Quote,
@@ -521,7 +521,7 @@ public class CashuPaymentService(
                 InputProofs = opCtx.Token.Proofs.ToArray(),
                 OperationType = OperationType.Melt,
                 OutputData = meltResponse.BlankOutputs,
-                MeltDetails = new MeltDetails       
+                MeltDetails = new MeltDetails
                 {
                     Expiry = DateTimeOffset.FromUnixTimeSeconds(
                         meltQuoteResponse.MeltQuote.Expiry ?? DateTime.UtcNow.UnixTimestamp()

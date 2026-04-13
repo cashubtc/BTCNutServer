@@ -28,12 +28,12 @@ public class GreenfieldCashuLightningSecretController(
 
         if (walletConfig is null)
         {
-            return this.CreateAPIError(404, "wallet-not-found", 
+            return this.CreateAPIError(404, "wallet-not-found",
                 "No Cashu wallet configured for this store.");
         }
         if (walletConfig.LightningClientSecret is not null)
         {
-            return this.CreateAPIError("secret-already-exists", 
+            return this.CreateAPIError("secret-already-exists",
                 "A secret already exists. Use PUT to rotate it.");
         }
         walletConfig.LightningClientSecret = Guid.NewGuid();
@@ -51,7 +51,7 @@ public class GreenfieldCashuLightningSecretController(
 
         if (walletConfig is null)
         {
-            return this.CreateAPIError(404, "wallet-not-found", 
+            return this.CreateAPIError(404, "wallet-not-found",
                 "No Cashu wallet configured for this store.");
         }
         walletConfig.LightningClientSecret = Guid.NewGuid();
@@ -69,7 +69,7 @@ public class GreenfieldCashuLightningSecretController(
 
         if (walletConfig is null)
         {
-            return this.CreateAPIError(404, "wallet-not-found", 
+            return this.CreateAPIError(404, "wallet-not-found",
                 "No Cashu wallet configured for this store.");
         }
         walletConfig.LightningClientSecret = null;

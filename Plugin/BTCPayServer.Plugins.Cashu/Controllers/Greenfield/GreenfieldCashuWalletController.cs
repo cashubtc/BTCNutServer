@@ -127,7 +127,7 @@ public class GreenfieldCashuWalletController(
 
         if (status is null || status.StoreId != storeId)
         {
-            return this.CreateAPIError(404, "restore-job-not-found", 
+            return this.CreateAPIError(404, "restore-job-not-found",
                 "The restore job was not found.");
         }
         return Ok(ToResponse(status));
@@ -401,7 +401,7 @@ public class GreenfieldCashuWalletController(
 
         if (selectedProofs.Count == 0)
         {
-            return this.CreateAPIError("no-proofs", 
+            return this.CreateAPIError("no-proofs",
                 "No available proofs for the specified mint and unit.");
         }
         var cashuToken = new CashuToken
