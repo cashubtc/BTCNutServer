@@ -27,6 +27,7 @@ public class StatefulWallet : IDisposable
     private readonly ILightningClient? _lightningClient;
     private readonly string _mintUrl;
     private readonly string _unit;
+    private readonly bool _privateRouteHints;
     private readonly CashuDbContextFactory? _dbContextFactory;
     private readonly MintManager? _mintManager;
     private readonly string? _storeId;
@@ -39,6 +40,7 @@ public class StatefulWallet : IDisposable
         ILightningClient lightningClient,
         string mint,
         string unit = "sat",
+        bool privateRouteHints = false,
         CashuDbContextFactory? cashuDbContextFactory = null,
         MintManager? mintManager = null,
         string? storeId = null
@@ -47,6 +49,7 @@ public class StatefulWallet : IDisposable
         _lightningClient = lightningClient;
         _mintUrl = mint;
         _unit = unit;
+        _privateRouteHints = privateRouteHints;
         _dbContextFactory = cashuDbContextFactory;
         _mintManager = mintManager;
         _storeId = storeId;
@@ -58,6 +61,7 @@ public class StatefulWallet : IDisposable
     public StatefulWallet(
         string mint,
         string unit = "sat",
+        bool privateRouteHints = false,
         CashuDbContextFactory? cashuDbContextFactory = null,
         MintManager? mintManager = null,
         string? storeId = null
@@ -65,6 +69,7 @@ public class StatefulWallet : IDisposable
     {
         _mintUrl = mint;
         _unit = unit;
+        _privateRouteHints = privateRouteHints;
         _dbContextFactory = cashuDbContextFactory;
         _mintManager = mintManager;
         _storeId = storeId;
@@ -139,9 +144,14 @@ public class StatefulWallet : IDisposable
 
 
             var initialInvoice = await _lightningClient.CreateInvoice(
-                opCtx.Value,
-                "initial invoice for melt quote",
-                new TimeSpan(0, 0, 30, 0)
+                new CreateInvoiceParams(
+                    opCtx.Value,
+                    "initial invoice for melt quote",
+                    new TimeSpan(0, 0, 30, 0)
+                )
+                {
+                    PrivateRouteHints = _privateRouteHints,
+                }
             );
 
             //check the fee reserve for this melt
@@ -170,6 +180,9 @@ public class StatefulWallet : IDisposable
                     "Cashu token melt in BTCPay Cashu Plugin",
                     new TimeSpan(0, 2, 0, 0)
                 )
+                {
+                    PrivateRouteHints = _privateRouteHints,
+                }
             );
 
             var finalMeltHandler = await _wallet

@@ -74,19 +74,29 @@ public class StatefulWalletFactory
             _logger.LogDebug("(Cashu) Could not get Lightning Client for store {StoreId}: {Reason}", storeId, ex.Message);
         }
 
+        var privateRouteHints = store.GetStoreBlob().LightningPrivateRouteHints;
+
         if (lightningClient != null)
         {
             return new StatefulWallet(
                 lightningClient,
                 mintUrl,
                 unit,
+                privateRouteHints,
                 _cashuDbContextFactory,
                 _mintManager,
                 storeId
             );
         }
 
-        return new StatefulWallet(mintUrl, unit, _cashuDbContextFactory, _mintManager, storeId);
+        return new StatefulWallet(
+            mintUrl,
+            unit,
+            privateRouteHints,
+            _cashuDbContextFactory,
+            _mintManager,
+            storeId
+        );
     }
 
     private ILightningClient? GetStoreLightningClient(StoreData store, BTCPayNetwork network)
