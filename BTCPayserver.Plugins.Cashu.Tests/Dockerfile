@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS builder
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends chromium-driver \
     && rm -rf /var/lib/apt/lists/*
@@ -44,6 +44,7 @@ RUN PLUGIN_DIR=/root/.btcpayserver/Plugins/BTCPayServer.Plugins.Cashu && \
        "$PLUGIN_DIR/BTCPayServer.Plugins.Cashu.dll"
 
 WORKDIR /source/BTCPayserver.Plugins.Cashu.Tests
-RUN dotnet exec --runtimeconfig bin/${CONFIGURATION_NAME}/net8.0/BTCPayserver.Plugins.Cashu.Tests.runtimeconfig.json --depsfile bin/${CONFIGURATION_NAME}/net8.0/BTCPayserver.Plugins.Cashu.Tests.deps.json bin/${CONFIGURATION_NAME}/net8.0/Microsoft.Playwright.dll install chromium --with-deps
+RUN TFM=$(ls bin/${CONFIGURATION_NAME}/ | head -1) && \
+    dotnet exec --runtimeconfig bin/${CONFIGURATION_NAME}/${TFM}/BTCPayserver.Plugins.Cashu.Tests.runtimeconfig.json --depsfile bin/${CONFIGURATION_NAME}/${TFM}/BTCPayserver.Plugins.Cashu.Tests.deps.json bin/${CONFIGURATION_NAME}/${TFM}/Microsoft.Playwright.dll install chromium --with-deps
 ENV CONFIGURATION_NAME=${CONFIGURATION_NAME}
 ENTRYPOINT ["./docker-entrypoint.sh"]

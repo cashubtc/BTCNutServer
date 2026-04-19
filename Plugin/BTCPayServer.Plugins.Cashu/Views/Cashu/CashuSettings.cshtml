@@ -3,7 +3,7 @@
 @using BTCPayServer.Plugins.Cashu
 @model BTCPayServer.Plugins.Cashu.ViewModels.CashuSettingsViewModel
 @{
-    ViewData.SetActivePage(CashuPlugin.PluginNavKey, "Cashu Settings", "Configuration");
+    ViewData.SetLayoutModel(new LayoutModel(CashuPlugin.PluginNavKey, "Cashu Settings") { SubMenuItemId = "Configuration" });
     var storeId = Context.GetCurrentStoreId();
     const string removeWalletString = "remove-my-wallet";
 }

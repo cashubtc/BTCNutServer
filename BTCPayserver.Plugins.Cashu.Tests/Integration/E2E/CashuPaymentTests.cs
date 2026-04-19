@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Tests;
 

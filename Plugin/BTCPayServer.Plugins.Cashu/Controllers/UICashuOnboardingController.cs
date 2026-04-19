@@ -13,8 +13,6 @@ using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
 using BTCPayServer.Plugins.Cashu.Services;
 using BTCPayServer.Plugins.Cashu.ViewModels;
-using BTCPayServer.Services.Invoices;
-using BTCPayServer.Services.Stores;
 using DotNut.NBitcoin.BIP39;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -31,24 +29,18 @@ namespace BTCPayServer.Plugins.Cashu.Controllers;
 public class UICashuOnboardingController : Controller
 {
     public UICashuOnboardingController(
-        StoreRepository storeRepository,
         CashuDbContextFactory cashuDbContextFactory,
-        PaymentMethodHandlerDictionary handlers,
         RestoreService restoreService
     )
     {
-        _storeRepository = storeRepository;
         _cashuDbContextFactory = cashuDbContextFactory;
         _restoreService = restoreService;
-        _handlers = handlers;
     }
 
-    private StoreData StoreData => HttpContext.GetStoreData();
+    private StoreData? StoreData => HttpContext.GetStoreDataOrNull();
 
-    private readonly StoreRepository _storeRepository;
     private readonly CashuDbContextFactory _cashuDbContextFactory;
     private readonly RestoreService _restoreService;
-    private readonly PaymentMethodHandlerDictionary _handlers;
 
     [HttpGet("getting-started")]
     public async Task<IActionResult> GettingStarted(string storeId)
@@ -232,9 +224,10 @@ public class UICashuOnboardingController : Controller
     [HttpPost("confirm-mnemonic")]
     public async Task<IActionResult> ConfirmMnemonic(string storeId, string fourWordChunk)
     {
+        if (StoreData is not { } store) return NotFound();
         await using var db = _cashuDbContextFactory.CreateContext();
         var userMnemonic = await db.CashuWalletConfig.SingleOrDefaultAsync(cwc =>
-            cwc.StoreId == StoreData.Id
+            cwc.StoreId == store.Id
         );
         if (userMnemonic == null || userMnemonic.Verified)
         {
@@ -245,18 +238,18 @@ public class UICashuOnboardingController : Controller
         if (!Equals(validChunk, fourWordChunk))
         {
             TempData[WellKnownTempData.ErrorMessage] = $"Invalid words chosen. Try again";
-            return RedirectToAction("ConfirmMnemonic", new { storeId = StoreData.Id });
+            return RedirectToAction("ConfirmMnemonic", new { storeId = store.Id });
         }
         userMnemonic.Verified = true;
         await db.SaveChangesAsync();
 
         TempData[WellKnownTempData.SuccessMessage] = $"Wallet created and verified successfully!";
-        var hasLightning = StoreData.IsLightningEnabled("BTC");
+        var hasLightning = store.IsLightningEnabled("BTC");
         if (!hasLightning)
         {
-            return RedirectToAction("InitWithoutLightning", new { storeId = StoreData.Id });
+            return RedirectToAction("InitWithoutLightning", new { storeId = store.Id });
         }
-        return RedirectToAction("StoreConfig", "UICashuStores", new { storeId = StoreData.Id });
+        return RedirectToAction("StoreConfig", "UICashuStores", new { storeId = store.Id });
     }
 
     [HttpGet("init-without-lightning")]

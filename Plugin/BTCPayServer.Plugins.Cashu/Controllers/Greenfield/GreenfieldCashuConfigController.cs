@@ -28,7 +28,7 @@ public class GreenfieldCashuConfigController(
     CashuDbContextFactory cashuDbContextFactory
 ) : ControllerBase
 {
-    private StoreData StoreData => HttpContext.GetStoreData();
+    private StoreData StoreData => HttpContext.GetStoreDataOrNull();
 
     [HttpGet("~/api/v1/stores/{storeId}/cashu")]
     [Authorize(Policy = Policies.CanViewStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Greenfield)]

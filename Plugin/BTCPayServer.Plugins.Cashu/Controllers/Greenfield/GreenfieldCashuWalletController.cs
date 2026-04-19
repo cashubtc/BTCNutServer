@@ -11,7 +11,6 @@ using BTCPayServer.Plugins.Cashu.Models;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
-using BTCPayServer.Plugins.Cashu.PaymentHandlers;
 using BTCPayServer.Plugins.Cashu.Services;
 using BTCPayServer.Services.Stores;
 using DotNut;
@@ -37,7 +36,7 @@ public class GreenfieldCashuWalletController(
     ILogger<GreenfieldCashuWalletController> logger
 ) : ControllerBase
 {
-    private StoreData StoreData => HttpContext.GetStoreData();
+    private StoreData? StoreData => HttpContext.GetStoreDataOrNull();
 
     [HttpPost("~/api/v1/stores/{storeId}/cashu/wallet")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Greenfield)]
@@ -153,7 +152,8 @@ public class GreenfieldCashuWalletController(
         await db.LightningPayments.Where(p => p.StoreId == storeId).ExecuteDeleteAsync();
         await db.LightningInvoices.Where(i => i.StoreId == storeId).ExecuteDeleteAsync();
 
-        var store = StoreData;
+        if (StoreData is not { } store)
+            return this.CreateAPIError(404, "store-not-found", "Store not found.");
         var blob = store.GetStoreBlob();
         blob.SetExcluded(CashuPlugin.CashuPmid, true);
         store.SetStoreBlob(blob);

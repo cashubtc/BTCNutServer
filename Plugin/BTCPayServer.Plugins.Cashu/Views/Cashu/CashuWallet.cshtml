@@ -6,7 +6,7 @@
 @model BTCPayServer.Plugins.Cashu.ViewModels.CashuWalletViewModel
 
 @{
-    ViewData.SetActivePage(CashuPlugin.PluginNavKey, "Cashu Wallet", "CashuWallet");
+    ViewData.SetLayoutModel(new LayoutModel(CashuPlugin.PluginNavKey, "Cashu Wallet") { SubMenuItemId = "CashuWallet" });
     var storeId = Context.GetCurrentStoreId();
 }
 
@@ -165,7 +165,7 @@
                                         }
                                     </td>
                                     <td class="pe-4 py-3 text-end align-middle">
-                                        <a href="@Url.Action("ExportedToken", new { tokenId = item.Id, storeId = @Context.GetStoreData().Id })" class="btn btn-outline-secondary btn-sm">
+                                        <a href="@Url.Action("ExportedToken", new { tokenId = item.Id, storeId = @Context.GetStoreDataOrNull()?.Id })" class="btn btn-outline-secondary btn-sm">
                                             Details
                                         </a>
                                     </td>
