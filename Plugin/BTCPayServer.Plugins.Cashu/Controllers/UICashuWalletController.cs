@@ -4,12 +4,10 @@ using System.Linq;
 using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Client;
-using BTCPayServer.Lightning;
 using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
-using BTCPayServer.Plugins.Cashu.PaymentHandlers;
 using BTCPayServer.Plugins.Cashu.Services;
 using BTCPayServer.Plugins.Cashu.ViewModels;
 using BTCPayServer.Services.Invoices;
@@ -31,8 +29,6 @@ namespace BTCPayServer.Plugins.Cashu.Controllers;
 )]
 public class UICashuWalletController(
     InvoiceRepository invoiceRepository,
-    PaymentMethodHandlerDictionary handlers,
-    CashuPaymentMethodHandler handler,
     CashuPaymentService cashuPaymentService,
     CashuDbContextFactory cashuDbContextFactory,
     MintManager mintManager,

@@ -5,8 +5,6 @@ using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Client;
 using BTCPayServer.Plugins.Cashu.Data;
-using BTCPayServer.Plugins.Cashu.Models;
-using BTCPayServer.Plugins.Cashu.Data.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Mvc;

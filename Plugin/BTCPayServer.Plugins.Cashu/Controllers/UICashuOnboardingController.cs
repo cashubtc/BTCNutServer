@@ -13,8 +13,6 @@ using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
 using BTCPayServer.Plugins.Cashu.Services;
 using BTCPayServer.Plugins.Cashu.ViewModels;
-using BTCPayServer.Services.Invoices;
-using BTCPayServer.Services.Stores;
 using DotNut.NBitcoin.BIP39;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -31,24 +29,18 @@ namespace BTCPayServer.Plugins.Cashu.Controllers;
 public class UICashuOnboardingController : Controller
 {
     public UICashuOnboardingController(
-        StoreRepository storeRepository,
         CashuDbContextFactory cashuDbContextFactory,
-        PaymentMethodHandlerDictionary handlers,
         RestoreService restoreService
     )
     {
-        _storeRepository = storeRepository;
         _cashuDbContextFactory = cashuDbContextFactory;
         _restoreService = restoreService;
-        _handlers = handlers;
     }
 
     private StoreData? StoreData => HttpContext.GetStoreDataOrNull();
 
-    private readonly StoreRepository _storeRepository;
     private readonly CashuDbContextFactory _cashuDbContextFactory;
     private readonly RestoreService _restoreService;
-    private readonly PaymentMethodHandlerDictionary _handlers;
 
     [HttpGet("getting-started")]
     public async Task<IActionResult> GettingStarted(string storeId)

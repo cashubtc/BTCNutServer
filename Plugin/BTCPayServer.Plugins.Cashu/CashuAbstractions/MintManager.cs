@@ -152,7 +152,7 @@ public class MintManager
 
         return mintKeysets.ToDictionary(
             mk => mk.KeysetId.ToString(),
-            mk => (MintUrl: mk.Mint.Url, Unit: mk.Unit)
+            mk => (MintUrl: mk.Mint.Url, mk.Unit)
         );
     }
 
