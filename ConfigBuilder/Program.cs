@@ -9,9 +9,10 @@ foreach (var plugin in plugins)
     {
         var assemblyConfigurationAttribute = typeof(Program).Assembly.GetCustomAttribute<AssemblyConfigurationAttribute>();
         var buildConfigurationName = assemblyConfigurationAttribute?.Configuration;
-        var x = Directory.GetDirectories(Path.Combine(plugin, "bin"));
+        var binPath = Path.Combine(plugin, "bin");
+        if (!Directory.Exists(binPath)) continue;
 
-        p += $"{Path.GetFullPath(plugin)}/bin/{buildConfigurationName}/net8.0/{Path.GetFileName(plugin)}.dll;";
+        p += $"{Path.GetFullPath(plugin)}/bin/{buildConfigurationName}/net10.0/{Path.GetFileName(plugin)}.dll;";
         // if (x.Any(s => s.EndsWith("Altcoins-Debug")))
         // {
         //     p += $"{Path.GetFullPath(plugin)}/bin/Altcoins-Debug/net8.0/{Path.GetFileName(plugin)}.dll;";

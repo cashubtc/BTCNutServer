@@ -1,7 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <LangVersion>12</LangVersion>
     <RootNamespace>BTCPayServer.Plugins.Cashu</RootNamespace>
   </PropertyGroup>
 
@@ -31,10 +30,10 @@
 
   <!-- This is all so that we can generate entity framework migrations in design mode
     <Target Name="PrepareEntityFrameworkMigrationDependency" BeforeTargets="BeforeBuild">
-        <Copy SourceFiles="..\..\submodules\btcpayserver\BTCPayServer\bin\Debug\net8.0\BTCPayServer.dll"
+        <Copy SourceFiles="..\..\submodules\btcpayserver\BTCPayServer\bin\Debug\net10.0\BTCPayServer.dll"
               DestinationFolder="$(OutputPath)"
               Condition="'$(Configuration)' == 'Debug'" />
-        <Copy SourceFiles="..\..\submodules\btcpayserver\BTCPayServer.Abstractions\bin\Debug\net8.0\BTCPayServer.Abstractions.dll"
+        <Copy SourceFiles="..\..\submodules\btcpayserver\BTCPayServer.Abstractions\bin\Debug\net10.0\BTCPayServer.Abstractions.dll"
               DestinationFolder="$(OutputPath)"
               Condition="'$(Configuration)' == 'Debug'" />
     </Target>
