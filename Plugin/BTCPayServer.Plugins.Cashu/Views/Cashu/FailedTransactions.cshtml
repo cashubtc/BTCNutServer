@@ -3,7 +3,7 @@
 @using BTCPayServer.Plugins.Cashu.Data.Models
 @model List<BTCPayServer.Plugins.Cashu.Data.Models.FailedTransaction>
 @{
-    ViewData.SetActivePage(CashuPlugin.PluginNavKey, "Interrupted Transactions", "Configuration");
+    ViewData.SetLayoutModel(new LayoutModel(CashuPlugin.PluginNavKey, "Interrupted Transactions") { SubMenuItemId = "Configuration" });
 }
 
 <h2 class="mb-2 mb-lg-3">@ViewData["Title"]</h2>

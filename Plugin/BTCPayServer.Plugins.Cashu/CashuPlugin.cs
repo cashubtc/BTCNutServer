@@ -18,7 +18,7 @@ public class CashuPlugin : BaseBTCPayServerPlugin
     public const string PluginNavKey = nameof(CashuPlugin) + "Nav";
     public override IBTCPayServerPlugin.PluginDependency[] Dependencies { get; } =
         {
-            new() { Identifier = nameof(BTCPayServer), Condition = ">=2.1.0" },
+            new() { Identifier = nameof(BTCPayServer), Condition = ">=2.3.7" },
         };
 
     internal static readonly PaymentMethodId CashuPmid = new("CASHU");
@@ -41,12 +41,9 @@ public class CashuPlugin : BaseBTCPayServerPlugin
         services.AddSingleton<CashuStatusProvider>();
         services.AddSingleton<CashuPaymentService>();
         services.AddSingleton<RestoreService>();
-        services.AddHostedService(s => s.GetRequiredService<RestoreService>());
         services.AddSingleton<StatefulWalletFactory>();
         services.AddSingleton<MintListener>();
-        services.AddHostedService(s => s.GetRequiredService<MintListener>());
         services.AddSingleton<FailedTransactionsPoller>();
-        services.AddHostedService(s => s.GetRequiredService<FailedTransactionsPoller>());
         services.AddSingleton<ILightningConnectionStringHandler, CashuLightningConnectionStringHandler>();
 
         //Ui extensions
@@ -63,7 +60,12 @@ public class CashuPlugin : BaseBTCPayServerPlugin
                 factory.ConfigureBuilder(o);
             }
         );
+
         services.AddHostedService<MigrationRunner>();
+        
+        services.AddHostedService(s => s.GetRequiredService<RestoreService>());
+        services.AddHostedService(s => s.GetRequiredService<MintListener>());
+        services.AddHostedService(s => s.GetRequiredService<FailedTransactionsPoller>());
 
         services.AddSingleton<ISwaggerProvider, CashuSwaggerProvider>();
 

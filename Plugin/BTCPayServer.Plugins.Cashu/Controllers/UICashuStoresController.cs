@@ -38,7 +38,7 @@ public class UICashuStoresController : Controller
         _cashuStatusProvider = cashuStatusProvider;
     }
 
-    private StoreData StoreData => HttpContext.GetStoreData();
+    private StoreData? StoreData => HttpContext.GetStoreDataOrNull();
 
     private readonly StoreRepository _storeRepository;
     private readonly CashuDbContextFactory _cashuDbContextFactory;
@@ -51,19 +51,20 @@ public class UICashuStoresController : Controller
     [HttpGet("{storeId}/cashu")]
     public async Task<IActionResult> StoreConfig(string storeId)
     {
-        var cashuPaymentMethodConfig = StoreData.GetPaymentMethodConfig<CashuPaymentMethodConfig>(
+        if (StoreData is not { } store) return NotFound();
+        var cashuPaymentMethodConfig = store.GetPaymentMethodConfig<CashuPaymentMethodConfig>(
             CashuPlugin.CashuPmid,
             _handlers
         );
         {
             await using var db = _cashuDbContextFactory.CreateContext();
-            var config = await db.CashuWalletConfig.FirstOrDefaultAsync(cwc => cwc.StoreId == StoreData.Id);
+            var config = await db.CashuWalletConfig.FirstOrDefaultAsync(cwc => cwc.StoreId == store.Id);
             if (config == null)
             {
                 return RedirectToAction(
                     "GettingStarted",
                     "UICashuOnboarding",
-                    new { storeId = StoreData.Id }
+                    new { storeId = store.Id }
                 );
             }
 
@@ -72,22 +73,22 @@ public class UICashuStoresController : Controller
                 return RedirectToAction(
                     "ConfirmMnemonic",
                     "UICashuOnboarding",
-                    new { storeId = StoreData.Id }
+                    new { storeId = store.Id }
                 );
             }
         }
 
         CashuStoreViewModel model = new CashuStoreViewModel();
-        model.HasLightningNodeConnected = StoreData.IsLightningEnabled("BTC");
+        model.HasLightningNodeConnected = store.IsLightningEnabled("BTC");
         if (cashuPaymentMethodConfig == null)
         {
-            model.Enabled = await _cashuStatusProvider.CashuEnabled(StoreData.Id);
+            model.Enabled = await _cashuStatusProvider.CashuEnabled(store.Id);
             model.PaymentAcceptanceModel = CashuPaymentModel.TrustedMintsOnly;
             model.TrustedMintsUrls = "";
         }
         else
         {
-            model.Enabled = await _cashuStatusProvider.CashuEnabled(StoreData.Id);
+            model.Enabled = await _cashuStatusProvider.CashuEnabled(store.Id);
             model.PaymentAcceptanceModel = cashuPaymentMethodConfig.PaymentModel;
             model.TrustedMintsUrls = String.Join(
                 ";",
@@ -104,7 +105,7 @@ public class UICashuStoresController : Controller
     [HttpPost("{storeId}/cashu")]
     public async Task<IActionResult> StoreConfig(string storeId, CashuStoreViewModel viewModel)
     {
-        var store = StoreData;
+        if (StoreData is not { } store) return NotFound();
         var blob = store.GetStoreBlob();
         viewModel.TrustedMintsUrls ??= "";
 
@@ -115,8 +116,8 @@ public class UICashuStoresController : Controller
             .Select(MintManager.NormalizeMintUrl)
             .ToList();
 
-        var lightningEnabled = StoreData.IsLightningEnabled("BTC");
-        var currentSettings = StoreData.GetPaymentMethodConfig<CashuPaymentMethodConfig>(
+        var lightningEnabled = store.IsLightningEnabled("BTC");
+        var currentSettings = store.GetPaymentMethodConfig<CashuPaymentMethodConfig>(
             CashuPlugin.CashuPmid,
             _handlers
         );
@@ -141,7 +142,7 @@ public class UICashuStoresController : Controller
 
         blob.SetExcluded(CashuPlugin.CashuPmid, !viewModel.Enabled);
 
-        StoreData.SetPaymentMethodConfig(_handlers[CashuPlugin.CashuPmid], paymentMethodConfig);
+        store.SetPaymentMethodConfig(_handlers[CashuPlugin.CashuPmid], paymentMethodConfig);
         store.SetStoreBlob(blob);
         await _storeRepository.UpdateStore(store);
         if (
@@ -163,13 +164,14 @@ public class UICashuStoresController : Controller
     [HttpGet("{storeId}/cashu/settings")]
     public async Task<IActionResult> Settings(string storeId)
     {
-        var storeConfig = StoreData.GetPaymentMethodConfig<CashuPaymentMethodConfig>(
+        if (StoreData is not { } store) return NotFound();
+        var storeConfig = store.GetPaymentMethodConfig<CashuPaymentMethodConfig>(
             CashuPlugin.CashuPmid,
             _handlers
         );
         if (storeConfig == null)
         {
-            return RedirectToAction("StoreConfig", new { storeId = StoreData.Id });
+            return RedirectToAction("StoreConfig", new { storeId = store.Id });
         }
         var feeConfig =
             storeConfig.FeeConfing
@@ -197,7 +199,8 @@ public class UICashuStoresController : Controller
     [HttpPost("{storeId}/cashu/settings")]
     public async Task<IActionResult> Settings(string storeId, CashuSettingsViewModel viewModel)
     {
-        var config = StoreData.GetPaymentMethodConfig<CashuPaymentMethodConfig>(
+        if (StoreData is not { } store) return NotFound();
+        var config = store.GetPaymentMethodConfig<CashuPaymentMethodConfig>(
             CashuPlugin.CashuPmid,
             _handlers
         );
@@ -206,7 +209,7 @@ public class UICashuStoresController : Controller
             return RedirectToAction(
                 "GettingStarted",
                 "UICashuOnboarding",
-                new { storeId = StoreData.Id }
+                new { storeId = store.Id }
             );
         }
 
@@ -215,8 +218,8 @@ public class UICashuStoresController : Controller
         config.FeeConfing.MaxLightningFee = viewModel.MaxLightningFee;
         config.FeeConfing.MaxKeysetFee = viewModel.MaxKeysetFee;
 
-        StoreData.SetPaymentMethodConfig(_handlers[CashuPlugin.CashuPmid], config);
-        await _storeRepository.UpdateStore(StoreData);
+        store.SetPaymentMethodConfig(_handlers[CashuPlugin.CashuPmid], config);
+        await _storeRepository.UpdateStore(store);
         TempData[WellKnownTempData.SuccessMessage] = "Settings saved successfully";
         return RedirectToAction(nameof(Settings), new { storeId });
     }
@@ -224,10 +227,9 @@ public class UICashuStoresController : Controller
     [HttpPost("{storeId}/cashu/remove-wallet")]
     public async Task<IActionResult> RemoveWallet(string storeId)
     {
-        if (StoreData?.Id is not { } id)
-        {
+        if (StoreData is not { } store)
             return NotFound();
-        }
+        var id = store.Id;
         // remove wallet config
         await using var db = _cashuDbContextFactory.CreateContext();
         var currentConfig = db.CashuWalletConfig.Where(cwc => cwc.StoreId == id);
@@ -242,10 +244,10 @@ public class UICashuStoresController : Controller
         await tokensFromWallet.ExecuteDeleteAsync();
 
         // remove config and turn off cashu payment method
-        var blob = StoreData.GetStoreBlob();
+        var blob = store.GetStoreBlob();
         blob.SetExcluded(CashuPlugin.CashuPmid, true);
-        StoreData.SetStoreBlob(blob);
-        await _storeRepository.UpdateStore(StoreData);
+        store.SetStoreBlob(blob);
+        await _storeRepository.UpdateStore(store);
 
         // remove cashu lightning client payments and invoices
         var payments = db.LightningPayments.Where(p => p.StoreId == id);
@@ -255,7 +257,7 @@ public class UICashuStoresController : Controller
         await invoices.ExecuteDeleteAsync();
 
         TempData[WellKnownTempData.SuccessMessage] = "Wallet removed successfully";
-        return RedirectToAction("Dashboard", "UIStores", new { StoreId = StoreData.Id });
+        return RedirectToAction("Dashboard", "UIStores", new { StoreId = store.Id });
     }
 
     [HttpPost("{storeId}/cashu/settings/lightning-client/generate")]

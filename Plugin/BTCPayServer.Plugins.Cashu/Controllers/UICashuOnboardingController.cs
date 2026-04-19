@@ -43,7 +43,7 @@ public class UICashuOnboardingController : Controller
         _handlers = handlers;
     }
 
-    private StoreData StoreData => HttpContext.GetStoreData();
+    private StoreData? StoreData => HttpContext.GetStoreDataOrNull();
 
     private readonly StoreRepository _storeRepository;
     private readonly CashuDbContextFactory _cashuDbContextFactory;
@@ -232,9 +232,10 @@ public class UICashuOnboardingController : Controller
     [HttpPost("confirm-mnemonic")]
     public async Task<IActionResult> ConfirmMnemonic(string storeId, string fourWordChunk)
     {
+        if (StoreData is not { } store) return NotFound();
         await using var db = _cashuDbContextFactory.CreateContext();
         var userMnemonic = await db.CashuWalletConfig.SingleOrDefaultAsync(cwc =>
-            cwc.StoreId == StoreData.Id
+            cwc.StoreId == store.Id
         );
         if (userMnemonic == null || userMnemonic.Verified)
         {
@@ -245,18 +246,18 @@ public class UICashuOnboardingController : Controller
         if (!Equals(validChunk, fourWordChunk))
         {
             TempData[WellKnownTempData.ErrorMessage] = $"Invalid words chosen. Try again";
-            return RedirectToAction("ConfirmMnemonic", new { storeId = StoreData.Id });
+            return RedirectToAction("ConfirmMnemonic", new { storeId = store.Id });
         }
         userMnemonic.Verified = true;
         await db.SaveChangesAsync();
 
         TempData[WellKnownTempData.SuccessMessage] = $"Wallet created and verified successfully!";
-        var hasLightning = StoreData.IsLightningEnabled("BTC");
+        var hasLightning = store.IsLightningEnabled("BTC");
         if (!hasLightning)
         {
-            return RedirectToAction("InitWithoutLightning", new { storeId = StoreData.Id });
+            return RedirectToAction("InitWithoutLightning", new { storeId = store.Id });
         }
-        return RedirectToAction("StoreConfig", "UICashuStores", new { storeId = StoreData.Id });
+        return RedirectToAction("StoreConfig", "UICashuStores", new { storeId = store.Id });
     }
 
     [HttpGet("init-without-lightning")]

@@ -4,7 +4,7 @@
 @using Microsoft.AspNetCore.Routing
 @model BTCPayServer.Plugins.Cashu.ViewModels.CashuInitWithoutLightningViewModel
 @{
-    ViewData.SetActivePage(CashuPlugin.PluginNavKey, "Cashu Configuration", "Configuration");
+    ViewData.SetLayoutModel(new LayoutModel(CashuPlugin.PluginNavKey, "Cashu Configuration") { SubMenuItemId = "Configuration" });
 }
 
 <div class="sticky-header d-flex align-items-center justify-content-between">

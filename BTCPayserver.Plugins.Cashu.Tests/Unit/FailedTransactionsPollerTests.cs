@@ -1,5 +1,4 @@
 using BTCPayServer.Plugins.Cashu.Data.Models;
-using BTCPayServer.Plugins.Cashu.Data.enums;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 using Xunit.Abstractions;

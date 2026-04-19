@@ -1,4 +1,3 @@
-#nullable enable
 using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Lightning;
 using NBitcoin;
