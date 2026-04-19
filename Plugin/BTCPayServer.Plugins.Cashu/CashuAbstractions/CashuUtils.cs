@@ -194,48 +194,6 @@ public static class CashuUtils
     }
 
     /// <summary>
-    /// Expands short 16-char v1 keyset IDs in proofs to their full 66-char form using the list of known keysets.
-    /// Token v4 (cashuB) stores keyset IDs in shortened form to save space; this must be resolved before fee validation.
-    /// </summary>
-    public static List<Proof> ExpandShortKeysetIds(
-        List<Proof> proofs,
-        List<GetKeysetsResponse.KeysetItemResponse> keysets
-    )
-    {
-        if (proofs.All(p => p.Id.GetVersion() != 0x01 || p.Id.ToString().Length != 16))
-            return proofs;
-
-        var keysetIds = keysets.Select(k => k.Id).ToList();
-        return proofs
-            .Select(proof =>
-            {
-                if (proof.Id.GetVersion() != 0x01 || proof.Id.ToString().Length != 16)
-                    return proof;
-
-                var shortId = proof.Id.ToString();
-                var match = keysetIds.FirstOrDefault(k =>
-                    k.ToString().StartsWith(shortId, StringComparison.OrdinalIgnoreCase)
-                );
-
-                if (match is null)
-                    throw new CashuPaymentException(
-                        $"Unknown keyset ID {shortId} for this mint"
-                    );
-
-                return new Proof
-                {
-                    Amount = proof.Amount,
-                    Secret = proof.Secret,
-                    C = proof.C,
-                    Witness = proof.Witness,
-                    DLEQ = proof.DLEQ,
-                    Id = match,
-                };
-            })
-            .ToList();
-    }
-
-    /// <summary>
     /// Helper function validating maximum allowed fees, so malicious mint can't rug us and trick us into receiving payment with too big keyset fee.
     /// </summary>
     /// <param name="proofs">Proofs we want to spend</param>

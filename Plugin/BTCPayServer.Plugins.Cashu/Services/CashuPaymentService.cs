@@ -200,7 +200,7 @@ public class CashuPaymentService(
             throw new MintOperationException("No keysets found.");
         }
 
-        ctx.Token.Proofs = CashuUtils.ExpandShortKeysetIds(ctx.Token.Proofs, keysets);
+        ctx.Token.Proofs = CashuTokenHelper.MapShortKeysetIds(ctx.Token.Proofs, keysets.Select(k => k.Id).ToList());
 
         if (!CashuUtils.ValidateFees(ctx.Token.Proofs, ctx.PaymentMethodConfig.FeeConfing, keysets, out var keysetFee))
         {
@@ -327,7 +327,7 @@ public class CashuPaymentService(
             throw new MintOperationException("No keysets found.");
         }
 
-        opCtx.Token.Proofs = CashuUtils.ExpandShortKeysetIds(opCtx.Token.Proofs, keysets);
+        opCtx.Token.Proofs = CashuTokenHelper.MapShortKeysetIds(opCtx.Token.Proofs, keysets.Select(k => k.Id).ToList());
 
         // Pre-validate keyset ownership before melt to avoid losing funds on conflict
         try
