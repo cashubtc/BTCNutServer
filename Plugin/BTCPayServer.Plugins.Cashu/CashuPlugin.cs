@@ -62,7 +62,7 @@ public class CashuPlugin : BaseBTCPayServerPlugin
         );
 
         services.AddHostedService<MigrationRunner>();
-        
+
         services.AddHostedService(s => s.GetRequiredService<RestoreService>());
         services.AddHostedService(s => s.GetRequiredService<MintListener>());
         services.AddHostedService(s => s.GetRequiredService<FailedTransactionsPoller>());
