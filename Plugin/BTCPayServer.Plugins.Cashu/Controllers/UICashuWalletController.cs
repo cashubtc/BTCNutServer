@@ -29,7 +29,6 @@ namespace BTCPayServer.Plugins.Cashu.Controllers;
 )]
 public class UICashuWalletController(
     InvoiceRepository invoiceRepository,
-    CashuPaymentService cashuPaymentService,
     CashuDbContextFactory cashuDbContextFactory,
     MintManager mintManager,
     StatefulWalletFactory walletFactory,
@@ -326,6 +325,13 @@ public class UICashuWalletController(
             return RedirectToAction("FailedTransactions", new { storeId = store.Id });
         }
 
+        if (failedTransaction.Resolved)
+        {
+            TempData[WellKnownTempData.SuccessMessage] =
+                "This transaction is already resolved.";
+            return RedirectToAction("FailedTransactions", new { storeId = store.Id });
+        }
+
         var invoice = await invoiceRepository.GetInvoice(failedTransaction.InvoiceId);
 
         if (invoice is null)
@@ -355,9 +361,8 @@ public class UICashuWalletController(
             return RedirectToAction("FailedTransactions", new { storeId = store.Id });
         }
 
-        await cashuPaymentService.RegisterPaymentForFailedTx(failedTransaction);
         TempData[WellKnownTempData.SuccessMessage] =
-            $"Transaction retrieved successfully. Marked as paid.";
+            "Transaction retrieved successfully. Marked as paid.";
         return RedirectToAction("FailedTransactions", new { storeId = store.Id });
     }
 

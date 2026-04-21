@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using BTCPayServer.Configuration;
@@ -22,9 +25,12 @@ using BTCPayServer.Services.Stores;
 using DotNut;
 using DotNut.Api;
 using DotNut.ApiModels;
+using DotNut.JsonConverters;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NBitcoin;
+using Npgsql;
 
 using InvoiceStatus = BTCPayServer.Client.Models.InvoiceStatus;
 using StoreData = BTCPayServer.Data.StoreData;
@@ -249,15 +255,21 @@ public class CashuPaymentService(
                         if (!pollResult.Success)
                         {
                             ftx.RetryCount += 1;
-                            ftx.LastRetried = DateTimeOffset.Now.ToUniversalTime();
-                            await using var db = cashuDbContextFactory.CreateContext();
-                            await db.FailedTransactions.AddAsync(ftx, cts);
+                            ftx.LastRetried = DateTimeOffset.UtcNow;
+                            await using (var db = cashuDbContextFactory.CreateContext())
+                            {
+                                await db.FailedTransactions.AddAsync(ftx, cts);
+                                await db.SaveChangesAsync(cts);
+                            }
                             logs.PayServer.LogDebug(
                                 "(Cashu) Transaction {InvoiceId} failed: broken connection with mint. Saved as failed transaction.",
                                 ctx.Invoice.Id
                             );
-                            await db.SaveChangesAsync(cts);
-                            return;
+                            // surface failure to the caller — without this the UI reports success
+                            // while the merchant's invoice remains unsettled.
+                            throw new CashuPaymentException(
+                                $"There was a problem processing your request. Please contact the merchant with corresponding invoice Id: {ctx.Invoice.Id}"
+                            );
                         }
 
                         await AddProofsToDb(
@@ -286,6 +298,7 @@ public class CashuPaymentService(
                 LastRetried = DateTimeOffset.UtcNow,
                 MintUrl = ctx.Token.Mint,
                 InputProofs = ctx.Token.Proofs.ToArray(),
+                InputAmount = ctx.Token.SumProofs,
                 OperationType = OperationType.Swap,
                 OutputData = swapResult.ProvidedOutputs,
                 Unit = ctx.Token.Unit,
@@ -376,9 +389,21 @@ public class CashuPaymentService(
 
         if (meltResponse.Success)
         {
-            var lnInvPaid = await opCtx.Wallet.ValidateLightningInvoicePaid(
-                meltQuoteResponse.Invoice?.Id
-            );
+            bool lnInvPaid;
+            try
+            {
+                lnInvPaid = await opCtx.Wallet.ValidateLightningInvoicePaid(
+                    meltQuoteResponse.Invoice?.Id
+                );
+            }
+            catch (Exception ex)
+            {
+                logs.PayServer.LogDebug(
+                    "(Cashu) ValidateLightningInvoicePaid threw for invoice {InvoiceId}: {Error}. Saving ftx for poller.",
+                    opCtx.Invoice.Id, ex.Message
+                );
+                lnInvPaid = false;
+            }
 
             if (!lnInvPaid)
             {
@@ -390,6 +415,7 @@ public class CashuPaymentService(
                     MintUrl = opCtx.Token.Mint,
                     Unit = opCtx.Token.Unit,
                     InputProofs = opCtx.Token.Proofs.ToArray(),
+                    InputAmount = opCtx.Token.SumProofs,
                     OperationType = OperationType.Melt,
                     OutputData = meltResponse.BlankOutputs,
                     MeltDetails = new MeltDetails
@@ -405,7 +431,7 @@ public class CashuPaymentService(
                     },
                     RetryCount = 1,
                     Details =
-                        "Mint marked melt quote as paid, but lightning invoice is still unpaid.",
+                        "Mint marked melt quote as paid, but lightning invoice state is unknown or still unpaid.",
                 };
                 await using var ctx = cashuDbContextFactory.CreateContext();
                 ctx.FailedTransactions.Add(ftx);
@@ -450,6 +476,7 @@ public class CashuPaymentService(
                 MintUrl = opCtx.Token.Mint,
                 Unit = opCtx.Token.Unit,
                 InputProofs = opCtx.Token.Proofs.ToArray(),
+                InputAmount = opCtx.Token.SumProofs,
                 OperationType = OperationType.Melt,
                 OutputData = meltResponse.BlankOutputs,
                 MeltDetails = new MeltDetails
@@ -459,7 +486,7 @@ public class CashuPaymentService(
                     ),
                     LightningInvoiceId = meltQuoteResponse.Invoice!.Id,
                     MeltQuoteId = meltResponse.Quote!.Quote,
-                    // Assert status as pending, even if it's paid - lightning invoice has to be paid       
+                    // Assert status as pending, even if it's paid - lightning invoice has to be paid
                     Status = "PENDING",
                 },
                 RetryCount = 1,
@@ -473,31 +500,89 @@ public class CashuPaymentService(
                     throw new MintOperationException("Melt failed: tokens were not spent.");
                 }
 
-                var failedMeltState = await PollFailedMelt(ftx, opCtx.Store, cancellationToken);
+                var pollResult = await PollFailedMelt(ftx, opCtx.Store, cancellationToken);
 
-                if (failedMeltState.State == CashuPaymentState.Failed)
+                switch (pollResult.State)
                 {
-                    throw new MintOperationException("Melt failed after retry.");
+                    case CashuPaymentState.Success:
+                        // Melt completed at the mint (LN invoice paid + quote PAID).
+                        // Persist change proofs (if any) and register the payment atomically,
+                        // using the same deterministic paymentId the normal flow would produce.
+                        if (pollResult.ResultProofs is { Count: > 0 })
+                        {
+                            await AddProofsToDb(
+                                pollResult.ResultProofs,
+                                ftx.StoreId,
+                                ftx.MintUrl,
+                                ProofState.Available
+                            );
+                        }
+                        var recoveredChange = (pollResult.ResultProofs?.Select(p => p.Amount).Sum() ?? 0L) * opCtx.UnitValue;
+                        var recoveredAmount = (meltQuoteResponse.Invoice?.Amount ?? LightMoney.Zero) + recoveredChange;
+                        await RegisterCashuPayment(opCtx, recoveredAmount);
+                        logs.PayServer.LogDebug(
+                            "(Cashu) Melt recovered on retry for invoice {InvoiceId}. Amount: {Amount} sat",
+                            opCtx.Invoice.Id,
+                            recoveredAmount.ToUnit(LightMoneyUnit.Satoshi)
+                        );
+                        return;
+
+                    case CashuPaymentState.Failed:
+                        throw new MintOperationException("Melt failed after retry.");
+
+                    case CashuPaymentState.Pending:
+                        // LN payment in flight at the mint. Persist ftx so the poller can finalize.
+                        ftx.Details = pollResult.Error?.Message ?? "Melt pending after retry";
+                        await using (var db = cashuDbContextFactory.CreateContext())
+                        {
+                            await db.FailedTransactions.AddAsync(ftx, cancellationToken);
+                            await db.SaveChangesAsync(cancellationToken);
+                        }
+                        logs.PayServer.LogDebug(
+                            "(Cashu) Melt pending after retry for invoice {InvoiceId}. Saved as failed transaction.",
+                            opCtx.Invoice.Id
+                        );
+                        throw new CashuPaymentException(
+                            $"There was a problem processing your request. Please contact the merchant with corresponding invoice Id: {opCtx.Invoice.Id}"
+                        );
                 }
             }
             catch (HttpRequestException)
             {
+                ftx.Details = "Network error during melt retry; mint unreachable";
                 logs.PayServer.LogDebug(
                     "(Cashu) Network error during melt for invoice {InvoiceId}. Saved as failed transaction.",
                     opCtx.Invoice.Id
                 );
-                await using var db = cashuDbContextFactory.CreateContext();
-                await db.FailedTransactions.AddAsync(ftx);
-                await db.SaveChangesAsync();
+                await using (var db = cashuDbContextFactory.CreateContext())
+                {
+                    await db.FailedTransactions.AddAsync(ftx, cancellationToken);
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+                throw new CashuPaymentException(
+                    $"There was a problem processing your request. Please contact the merchant with corresponding invoice Id: {opCtx.Invoice.Id}"
+                );
             }
         }
         else if (meltResponse.ChangeProofs != null)
         {
             // melt succeeded at mint level (LN invoice paid) but SaveProofs failed due to db error.
             // changeProofs being populated means the mint completed the melt.
-            var lnInvPaid = await opCtx.Wallet.ValidateLightningInvoicePaid(
-                meltQuoteResponse.Invoice?.Id
-            );
+            bool lnInvPaid;
+            try
+            {
+                lnInvPaid = await opCtx.Wallet.ValidateLightningInvoicePaid(
+                    meltQuoteResponse.Invoice?.Id
+                );
+            }
+            catch (Exception ex)
+            {
+                logs.PayServer.LogDebug(
+                    "(Cashu) ValidateLightningInvoicePaid threw for invoice {InvoiceId}: {Error}. Saving ftx for poller.",
+                    opCtx.Invoice.Id, ex.Message
+                );
+                lnInvPaid = false;
+            }
 
             if (lnInvPaid)
             {
@@ -519,6 +604,7 @@ public class CashuPaymentService(
                 MintUrl = opCtx.Token.Mint,
                 Unit = opCtx.Token.Unit,
                 InputProofs = opCtx.Token.Proofs.ToArray(),
+                InputAmount = opCtx.Token.SumProofs,
                 OperationType = OperationType.Melt,
                 OutputData = meltResponse.BlankOutputs,
                 MeltDetails = new MeltDetails
@@ -536,6 +622,16 @@ public class CashuPaymentService(
             await using var ctx = cashuDbContextFactory.CreateContext();
             ctx.FailedTransactions.Add(ftx);
             await ctx.SaveChangesAsync();
+
+            if (!lnInvPaid)
+            {
+                // LN not yet paid (or unknown). Payment wasn't registered — the customer must
+                // see failure so the merchant isn't left thinking the invoice settled.
+                // The poller will finalize if the LN payment eventually lands.
+                throw new CashuPaymentException(
+                    $"There was a problem processing your request. Please contact the merchant with corresponding invoice Id: {opCtx.Invoice.Id}"
+                );
+            }
         }
         else
         {
@@ -544,32 +640,40 @@ public class CashuPaymentService(
         }
     }
 
-    public async Task RegisterPaymentForFailedTx(FailedTransaction ftx, CancellationToken ct = default)
+    public enum FtxPaymentRegistrationResult
+    {
+        /// <summary>Payment was added or already present; invoice is (or will be) settled.</summary>
+        Registered,
+        /// <summary>Invoice is gone. Nothing we can do — treat as resolved so poller stops retrying.</summary>
+        InvoiceMissing,
+        /// <summary>Input amount + currency combination can't produce a payment amount. Manual intervention required.</summary>
+        UnresolvableAmount,
+    }
+
+    /// <summary>
+    /// Registers payment for a recovered FailedTransaction. Idempotent.
+    /// Throws on transient errors (network, DB) so the caller keeps ftx unresolved and retries later.
+    /// Returns a terminal classification for permanent outcomes.
+    /// </summary>
+    public async Task<FtxPaymentRegistrationResult> RegisterPaymentForFailedTx(
+        FailedTransaction ftx,
+        CancellationToken ct = default
+    )
     {
         var invoice = await invoiceRepository.GetInvoice(ftx.InvoiceId, true);
         if (invoice is null)
-            return;
+            return FtxPaymentRegistrationResult.InvoiceMissing;
 
         if (invoice.Status == InvoiceStatus.Settled)
-            return;
+            return FtxPaymentRegistrationResult.Registered;
 
-        LightMoney singleUnitPrice;
-        try
-        {
-            singleUnitPrice = await CashuUtils.GetTokenSatRate(
-                ftx.MintUrl,
-                ftx.Unit,
-                handler.Network.NBitcoinNetwork
-            );
-        }
-        catch (Exception ex)
-        {
-            logs.PayServer.LogWarning(
-                "(Cashu) Couldn't fetch unit price for failed tx {Id}, skipping payment registration: {Error}",
-                ftx.Id, ex.Message
-            );
-            return;
-        }
+        // GetTokenSatRate throws HttpRequestException on mint outage — propagate so ftx stays
+        // unresolved and the poller retries. Don't swallow as before (that hid lost payments).
+        var singleUnitPrice = await CashuUtils.GetTokenSatRate(
+            ftx.MintUrl,
+            ftx.Unit,
+            handler.Network.NBitcoinNetwork
+        );
 
         var isOld = ftx is { InputAmount: 0, InputProofsJson: null };
         LightMoney? paymentAmount = isOld switch
@@ -582,52 +686,108 @@ public class CashuPaymentService(
 
         if (paymentAmount is null)
         {
-            logs.PayServer.LogWarning(
-                "(Cashu) Can't determine payment amount for failed tx {Id}: InputAmount=0 and currency={Currency}",
-                ftx.Id, invoice.Currency
+            logs.PayServer.LogError(
+                "(Cashu) Can't determine payment amount for failed tx {Id}: InputAmount={InputAmount} currency={Currency}. Manual registration required.",
+                ftx.Id, ftx.InputAmount, invoice.Currency
             );
-            return;
+            return FtxPaymentRegistrationResult.UnresolvableAmount;
         }
 
-        await RegisterCashuPayment(invoice, paymentAmount);
+        await RegisterCashuPayment(invoice, paymentAmount, BuildPaymentIdForFtx(ftx));
+        return FtxPaymentRegistrationResult.Registered;
     }
 
     public Task RegisterCashuPayment(
         CashuOperationContext ctx,
         LightMoney value = null,
         bool markPaid = true
-    ) => RegisterCashuPayment(ctx.Invoice, value ?? ctx.Value, markPaid);
+    ) => RegisterCashuPayment(
+        ctx.Invoice,
+        value ?? ctx.Value,
+        BuildPaymentId(ctx.Invoice.Id, ctx.Token.Proofs),
+        markPaid
+    );
 
+    /// <summary>
+    /// Registers a Cashu payment for the invoice. Idempotent: identified by deterministic paymentId
+    /// so retries, parallel callers, or partial-failure recoveries never double-count.
+    /// </summary>
     public async Task RegisterCashuPayment(
         InvoiceEntity invoice,
         LightMoney value,
+        string paymentId,
         bool markPaid = true
     )
     {
-        //set payment method fee to 0 so it won't be added to due for second time
-        var prompt = invoice.GetPaymentPrompt(CashuPlugin.CashuPmid);
-        if (prompt != null)
+        // Re-read invoice to avoid acting on stale payment list (caller's snapshot may miss a
+        // concurrent registration from another thread / manual retry / poller).
+        var fresh = await invoiceRepository.GetInvoice(invoice.Id, true) ?? invoice;
+        var alreadyRegistered = fresh
+            .GetPayments(false)
+            .Any(p => p.Id == paymentId);
+
+        if (!alreadyRegistered)
         {
-            prompt.PaymentMethodFee = 0.0m;
-            await invoiceRepository.UpdatePrompt(invoice.Id, prompt);
+            //set payment method fee to 0 so it won't be added to due for second time
+            var prompt = fresh.GetPaymentPrompt(CashuPlugin.CashuPmid);
+            if (prompt != null && prompt.PaymentMethodFee != 0.0m)
+            {
+                prompt.PaymentMethodFee = 0.0m;
+                await invoiceRepository.UpdatePrompt(fresh.Id, prompt);
+            }
+
+            var paymentData = new PaymentData
+            {
+                Id = paymentId,
+                Created = DateTimeOffset.UtcNow,
+                Status = PaymentStatus.Processing,
+                Currency = "BTC",
+                InvoiceDataId = fresh.Id,
+                Amount = value.ToDecimal(LightMoneyUnit.BTC),
+                PaymentMethodId = handler.PaymentMethodId.ToString(),
+            }.Set(fresh, handler, new CashuPaymentData());
+
+            // AddPayment swallows DbUpdateException on duplicate PK (Id, PaymentMethodId),
+            // returning null — so simultaneous callers are safe even if the pre-check missed.
+            await paymentService.AddPayment(paymentData);
         }
 
-        var paymentData = new PaymentData
+        if (markPaid && fresh.Status != InvoiceStatus.Settled)
         {
-            Id = Guid.NewGuid().ToString(),
-            Created = DateTimeOffset.UtcNow,
-            Status = PaymentStatus.Processing,
-            Currency = "BTC",
-            InvoiceDataId = invoice.Id,
-            Amount = value.ToDecimal(LightMoneyUnit.BTC),
-            PaymentMethodId = handler.PaymentMethodId.ToString(),
-        }.Set(invoice, handler, new CashuPaymentData());
-
-        await paymentService.AddPayment(paymentData);
-        if (markPaid)
-        {
-            await invoiceRepository.MarkInvoiceStatus(invoice.Id, InvoiceStatus.Settled);
+            await invoiceRepository.MarkInvoiceStatus(fresh.Id, InvoiceStatus.Settled);
         }
+    }
+
+    private static readonly JsonSerializerOptions SecretJsonOptions = new()
+    {
+        Converters = { new SecretJsonConverter() }
+    };
+
+    /// <summary>
+    /// Deterministic payment identifier derived from invoice + input proof secrets.
+    /// Same (invoice, token) always yields the same ID so retries are idempotent at the DB layer.
+    /// </summary>
+    internal static string BuildPaymentId(string invoiceId, IEnumerable<Proof> inputProofs)
+    {
+        var secrets = inputProofs
+            .Select(p => JsonSerializer.Serialize(p.Secret, SecretJsonOptions))
+            .OrderBy(s => s, StringComparer.Ordinal);
+        var payload = $"{invoiceId}|{string.Join(",", secrets)}";
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(payload));
+        return "cashu-" + Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Deterministic payment identifier for a FailedTransaction. Prefers hash of InputProofs for
+    /// parity with the happy-path ID (so the same logical payment always maps to one record),
+    /// falls back to ftx.Id for legacy ftx rows missing InputProofsJson.
+    /// </summary>
+    internal static string BuildPaymentIdForFtx(FailedTransaction ftx)
+    {
+        var inputs = ftx.InputProofs;
+        return inputs.Length > 0
+            ? BuildPaymentId(ftx.InvoiceId, inputs)
+            : "cashu-ftx-" + ftx.Id.ToString("N");
     }
 
     private ILightningClient GetStoreLightningClient(StoreData store, BTCPayNetwork network)
@@ -671,10 +831,30 @@ public class CashuPaymentService(
         await mintManager.GetOrCreateMint(mintUrl);
 
         await using var dbContext = cashuDbContextFactory.CreateContext();
-        var dbProofs = StoredProof.FromBatch(enumerable, storeId, status);
+        var dbProofs = StoredProof.FromBatch(enumerable, storeId, status).ToArray();
         dbContext.Proofs.AddRange(dbProofs);
 
-        await dbContext.SaveChangesAsync();
+        try
+        {
+            await dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: "23505", ConstraintName: "IX_Proofs_Secret" })
+        {
+            // Retry scenario: some or all proofs already exist, insert individually, skipping duplicates
+            dbContext.ChangeTracker.Clear();
+            foreach (var proof in dbProofs)
+            {
+                try
+                {
+                    dbContext.Proofs.Add(proof);
+                    await dbContext.SaveChangesAsync();
+                }
+                catch (DbUpdateException inner) when (inner.InnerException is PostgresException { SqlState: "23505", ConstraintName: "IX_Proofs_Secret" })
+                {
+                    dbContext.ChangeTracker.Clear();
+                }
+            }
+        }
     }
 
     private CashuPaymentState CompareMeltQuotes(
