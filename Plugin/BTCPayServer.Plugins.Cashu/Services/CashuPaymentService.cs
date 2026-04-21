@@ -606,8 +606,11 @@ public class CashuPaymentService(
     {
         //set payment method fee to 0 so it won't be added to due for second time
         var prompt = invoice.GetPaymentPrompt(CashuPlugin.CashuPmid);
-        prompt.PaymentMethodFee = 0.0m;
-        await invoiceRepository.UpdatePrompt(invoice.Id, prompt);
+        if (prompt != null)
+        {
+            prompt.PaymentMethodFee = 0.0m;
+            await invoiceRepository.UpdatePrompt(invoice.Id, prompt);
+        }
 
         var paymentData = new PaymentData
         {
@@ -728,6 +731,9 @@ public class CashuPaymentService(
         var lightningClient = GetStoreLightningClient(storeData, handler.Network);
         var lnInvoice = await lightningClient.GetInvoice(ftx.MeltDetails.LightningInvoiceId, cts);
 
+        if (lnInvoice == null)
+            return new PollResult() { State = CashuPaymentState.Pending };
+
         if (lnInvoice.Status == LightningInvoiceStatus.Expired)
         {
             return new PollResult() { State = CashuPaymentState.Failed };
@@ -830,6 +836,8 @@ public class CashuPaymentService(
                 }
                 var keysetId = firstSignature.Id;
                 var keys = await wallet.GetKeys(keysetId);
+                if (keys == null)
+                    return new PollResult { State = CashuPaymentState.Pending };
                 var proofs = DotNut.Abstractions.Utils.ConstructProofsFromPromises(
                     response.Signatures.ToList(),
                     ftx.OutputData,
