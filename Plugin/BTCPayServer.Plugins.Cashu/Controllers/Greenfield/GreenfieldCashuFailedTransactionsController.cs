@@ -22,8 +22,7 @@ namespace BTCPayServer.Plugins.Cashu.Controllers.Greenfield;
 public class GreenfieldCashuFailedTransactionsController(
     CashuDbContextFactory cashuDbContextFactory,
     InvoiceRepository invoiceRepository,
-    FailedTransactionsPoller failedTransactionsPoller,
-    CashuPaymentService cashuPaymentService
+    FailedTransactionsPoller failedTransactionsPoller
 ) : ControllerBase
 {
     [HttpGet("~/api/v1/stores/{storeId}/cashu/failed-transactions")]
@@ -52,6 +51,12 @@ public class GreenfieldCashuFailedTransactionsController(
         {
             return this.CreateAPIError(404, "failed-transaction-not-found", "The failed transaction was not found.");
         }
+
+        if (failedTransaction.Resolved)
+        {
+            return Ok(ToResponse(failedTransaction));
+        }
+
         var invoice = await invoiceRepository.GetInvoice(failedTransaction.InvoiceId);
         if (invoice is null)
         {
@@ -76,8 +81,6 @@ public class GreenfieldCashuFailedTransactionsController(
                 $"Transaction state: {pollResult.State}.{(errorMsg is not null ? " " + errorMsg : "")}"
             );
         }
-
-        await cashuPaymentService.RegisterPaymentForFailedTx(failedTransaction);
 
         return Ok(ToResponse(failedTransaction));
     }
