@@ -1,6 +1,6 @@
-using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.Models;
+using BTCPayServer.Plugins.Cashu.Services;
 using DotNut;
 using Microsoft.EntityFrameworkCore;
 using Xunit;

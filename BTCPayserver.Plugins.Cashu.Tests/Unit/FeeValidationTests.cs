@@ -1,6 +1,6 @@
 using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Errors;
-using BTCPayServer.Plugins.Cashu.PaymentHandlers;
+using BTCPayServer.Plugins.Cashu.PaymentMethod;
 using DotNut;
 using DotNut.ApiModels;
 using Xunit;

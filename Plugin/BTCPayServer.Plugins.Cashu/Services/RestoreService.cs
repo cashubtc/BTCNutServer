@@ -1,19 +1,16 @@
-#nullable enable
-
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
+using BTCPayServer.Plugins.Cashu.Wallets;
 using DotNut;
 using DotNut.Abstractions;
-using DotNut.Api;
 using DotNut.NBitcoin.BIP39;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
@@ -63,7 +60,7 @@ public class RestoreService : IHostedService
         _mintSemaphore.Dispose();
     }
 
-    /// <summary>
+    /// <
     /// Add new restore task to queue
     /// </summary>
     public string QueueRestore(string storeId, List<string> mintUrls, string seed)

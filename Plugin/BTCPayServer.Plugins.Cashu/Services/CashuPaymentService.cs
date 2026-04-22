@@ -18,7 +18,8 @@ using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
 using BTCPayServer.Plugins.Cashu.Errors;
-using BTCPayServer.Plugins.Cashu.PaymentHandlers;
+using BTCPayServer.Plugins.Cashu.PaymentMethod;
+using BTCPayServer.Plugins.Cashu.Wallets;
 using BTCPayServer.Services;
 using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
@@ -99,7 +100,6 @@ public class CashuPaymentService(
         }
 
         var network = handler.Network;
-
         LightMoney singleUnitSatoshiWorth;
         try
         {
@@ -234,7 +234,7 @@ public class CashuPaymentService(
                 case CashuPaymentException cpe:
                     throw cpe;
 
-                case HttpRequestException httpException:
+                case HttpRequestException:
                     {
                         var ftx = new FailedTransaction()
                         {

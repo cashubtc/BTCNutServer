@@ -13,7 +13,7 @@ using NBitcoin;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace BTCPayServer.Plugins.Cashu.PaymentHandlers;
+namespace BTCPayServer.Plugins.Cashu.PaymentMethod;
 
 public class CashuPaymentMethodHandler(
     BTCPayNetworkProvider networkProvider,

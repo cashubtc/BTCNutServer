@@ -1,5 +1,5 @@
-using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Data.Models;
+using BTCPayServer.Plugins.Cashu.Wallets;
 using DotNut;
 using Xunit;
 

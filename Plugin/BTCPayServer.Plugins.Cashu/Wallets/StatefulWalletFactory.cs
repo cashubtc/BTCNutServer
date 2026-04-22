@@ -6,13 +6,14 @@ using BTCPayServer.Lightning;
 using BTCPayServer.Payments;
 using BTCPayServer.Payments.Lightning;
 using BTCPayServer.Plugins.Cashu.Data;
+using BTCPayServer.Plugins.Cashu.Services;
 using BTCPayServer.Services;
 using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace BTCPayServer.Plugins.Cashu.CashuAbstractions;
+namespace BTCPayServer.Plugins.Cashu.Wallets;
 
 public class StatefulWalletFactory
 {
@@ -92,7 +93,6 @@ public class StatefulWalletFactory
         return new StatefulWallet(
             mintUrl,
             unit,
-            privateRouteHints,
             _cashuDbContextFactory,
             _mintManager,
             storeId

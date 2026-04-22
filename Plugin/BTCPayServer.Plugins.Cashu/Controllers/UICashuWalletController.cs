@@ -10,6 +10,7 @@ using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
 using BTCPayServer.Plugins.Cashu.Services;
 using BTCPayServer.Plugins.Cashu.ViewModels;
+using BTCPayServer.Plugins.Cashu.Wallets;
 using BTCPayServer.Services.Invoices;
 using DotNut;
 using DotNut.Abstractions;

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using BTCPayServer.Lightning;
+using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
@@ -17,7 +18,7 @@ using Microsoft.EntityFrameworkCore;
 using DotNutOutputData = DotNut.Abstractions.OutputData;
 using Utils = DotNut.Abstractions.Utils;
 
-namespace BTCPayServer.Plugins.Cashu.CashuAbstractions;
+namespace BTCPayServer.Plugins.Cashu.Wallets;
 
 /// <summary>
 /// Class leveraging cashu wallet functionalities.
@@ -27,13 +28,13 @@ public class StatefulWallet : IDisposable
     private readonly ILightningClient? _lightningClient;
     private readonly string _mintUrl;
     private readonly string _unit;
-    private readonly bool _privateRouteHints;
+    private readonly bool _privateRouteHints = false;
     private readonly CashuDbContextFactory? _dbContextFactory;
     private readonly MintManager? _mintManager;
     private readonly string? _storeId;
     public bool HasLightningClient => _lightningClient is not null;
 
-    private readonly Wallet _wallet;
+    private readonly DotNut.Abstractions.Wallet _wallet;
     private bool _initialized;
 
     public StatefulWallet(
@@ -61,7 +62,6 @@ public class StatefulWallet : IDisposable
     public StatefulWallet(
         string mint,
         string unit = "sat",
-        bool privateRouteHints = false,
         CashuDbContextFactory? cashuDbContextFactory = null,
         MintManager? mintManager = null,
         string? storeId = null
@@ -69,12 +69,13 @@ public class StatefulWallet : IDisposable
     {
         _mintUrl = mint;
         _unit = unit;
-        _privateRouteHints = privateRouteHints;
         _dbContextFactory = cashuDbContextFactory;
         _mintManager = mintManager;
         _storeId = storeId;
 
-        _wallet = (Wallet)Wallet.Create().WithMint(CashuUtils.GetCashuHttpClient(mint), true);
+        _wallet = (Wallet)Wallet
+            .Create()
+            .WithMint(CashuUtils.GetCashuHttpClient(mint), true);
     }
 
     private async Task EnsureInitialized()
@@ -141,7 +142,6 @@ public class StatefulWallet : IDisposable
             {
                 throw new CashuPluginException("Lightning client is not configured");
             }
-
 
             var initialInvoice = await _lightningClient.CreateInvoice(
                 new CreateInvoiceParams(
@@ -230,7 +230,6 @@ public class StatefulWallet : IDisposable
                 throw new CashuPluginException("Lightning client is not configured");
             }
 
-            // generate blank outputs manually so we can return them in MeltResult
             var feeReserve = (ulong)meltQuote.FeeReserve;
             var activeKeysetId = await _wallet.GetActiveKeysetId(_unit, cancellationToken);
             if (activeKeysetId == null)
@@ -244,7 +243,6 @@ public class StatefulWallet : IDisposable
                 throw new CashuPluginException("No keyset available");
             }
 
-            // create blank outputs again and use them
             blankOutputs = await _wallet.CreateOutputs(
                 Enumerable.Repeat(1UL, Utils.CalculateNumberOfBlankOutputs(feeReserve)).ToList(),
                 activeKeysetId,
@@ -473,20 +471,7 @@ public class StatefulWallet : IDisposable
 
         return StateResponseItem.TokenState.UNSPENT;
     }
-
-    public async Task<StateResponseItem.TokenState> CheckTokenState(List<StoredProof> proofs)
-    {
-        var dotnutProofs = proofs.Select(p => p.ToDotNutProof()).ToList();
-        return await CheckTokenState(dotnutProofs);
-    }
-
-    public async Task<List<StateResponseItem>> CheckIndividualProofStates(List<StoredProof> proofs)
-    {
-        await EnsureInitialized();
-        var dotnutProofs = proofs.Select(p => p.ToDotNutProof()).ToList();
-        var response = await _wallet.CheckState(dotnutProofs);
-        return response.States.ToList();
-    }
+    
 
     public async Task<PostRestoreResponse> RestoreProofsFromInputs(
         BlindedMessage[] blindedMessages,
@@ -515,6 +500,48 @@ public class StatefulWallet : IDisposable
 
         return invoice?.Status == LightningInvoiceStatus.Paid;
     }
+    
+  //   public async Task<bool> ValidateLightningInvoicePaid(string? invoiceId,                                                                                                                                                                                                         
+  //     TimeSpan? timeout = null, CancellationToken ct = default)
+  // {
+  //     if (_lightningClient is null)
+  //     {
+  //         throw new CashuPluginException("Lightning Client has not been configured.");
+  //     }
+  //     
+  //     var invoice = await _lightningClient.GetInvoice(invoiceId, ct);
+  //     if (invoice?.Status == LightningInvoiceStatus.Paid)
+  //     {
+  //         return true;
+  //     }
+  //     if (invoice?.Status == LightningInvoiceStatus.Expired)
+  //     {
+  //         return false;
+  //     }
+  //
+  //     using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);                                                                                                                                                                                                        
+  //     cts.CancelAfter(timeout ?? TimeSpan.FromSeconds(60));
+  //     try                                                                                                                                                                                                                                                                         
+  //     {
+  //         using var listener = await _lightningClient.Listen(cts.Token);
+  //         while (true)                                                                                                                                                                                                                                                            
+  //         {
+  //             var paid = await listener.WaitInvoice(cts.Token);
+  //             if (paid is null)
+  //             {
+  //                 continue;
+  //             }
+  //             if (paid.Id == invoiceId && paid.Status == LightningInvoiceStatus.Paid)
+  //             {
+  //                 return true;
+  //             }                                                                                                                                                                                      
+  //         }
+  //     }                                                                                                                                                                                                                                                                           
+  //     catch (OperationCanceledException) { }
+  //     
+  //     invoice = await _lightningClient.GetInvoice(invoiceId, ct);
+  //     return invoice?.Status == LightningInvoiceStatus.Paid;                                                                                                                                                                                                                      
+  // }               
 
     public async Task<PostMeltQuoteBolt11Response> CheckMeltQuoteState(
         string meltQuoteId,

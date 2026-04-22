@@ -62,7 +62,6 @@
 
   <ItemGroup>
     <Folder Include="Data\Migrations\" />
-    <Folder Include="Screenshots\" />
   </ItemGroup>
 
   <ItemGroup>

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using BTCPayServer.Lightning;
+using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
@@ -18,7 +19,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace BTCPayServer.Plugins.Cashu.CashuAbstractions;
+namespace BTCPayServer.Plugins.Cashu.Lightning;
 
 public class MintListener(CashuDbContextFactory dbContextFactory, ILogger<MintListener> logger)
     : IHostedService, IDisposable

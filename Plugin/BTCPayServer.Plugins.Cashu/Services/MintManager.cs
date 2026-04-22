@@ -7,7 +7,7 @@ using BTCPayServer.Plugins.Cashu.Data.Models;
 using DotNut;
 using Microsoft.EntityFrameworkCore;
 
-namespace BTCPayServer.Plugins.Cashu.CashuAbstractions;
+namespace BTCPayServer.Plugins.Cashu.Services;
 
 public class MintManager
 {

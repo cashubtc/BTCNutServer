@@ -6,7 +6,7 @@ using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
 using Microsoft.EntityFrameworkCore;
 
-namespace BTCPayServer.Plugins.Cashu.PaymentHandlers;
+namespace BTCPayServer.Plugins.Cashu.PaymentMethod;
 
 public class CashuStatusProvider(
     StoreRepository storeRepository,
