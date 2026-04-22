@@ -4,7 +4,7 @@ using BTCPayServer.Plugins.Cashu.Data.enums;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 
-namespace BTCPayServer.Plugins.Cashu.Models;
+namespace BTCPayServer.Plugins.Cashu.Controllers.Greenfield.DTOs;
 
 public record CashuConfigResponseDto(
     bool Enabled,

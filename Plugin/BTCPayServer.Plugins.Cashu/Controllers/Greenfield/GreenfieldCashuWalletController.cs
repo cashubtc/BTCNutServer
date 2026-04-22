@@ -7,7 +7,7 @@ using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Client;
 using BTCPayServer.Data;
 using BTCPayServer.Plugins.Cashu.CashuAbstractions;
-using BTCPayServer.Plugins.Cashu.Models;
+using BTCPayServer.Plugins.Cashu.Controllers.Greenfield.DTOs;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
