@@ -48,6 +48,25 @@ public class CashuPaymentRegistrar(
         BuildPaymentId(ctx.Invoice.Id, ctx.Token.Proofs),
         markPaid
     );
+
+    public async Task<string> RegisterPending(
+        CashuOperationContext ctx,
+        string lightningInvoiceId,
+        LightMoney? value = null)
+    {
+        var paymentId = BuildPaymentId(ctx.Invoice.Id, ctx.Token.Proofs);
+        await Register(
+            ctx.Invoice,
+            value ?? ctx.Value,
+            paymentId,
+            markPaid: false,
+            new CashuPaymentData
+            {
+                PendingSettlement = true,
+                LightningInvoiceId = lightningInvoiceId
+            });
+        return paymentId;
+    }
     /// <summary>
     /// Registers a Cashu payment for the invoice. Idempotent: identified by deterministic paymentId
     /// so retries, parallel callers, or partial-failure recoveries never double-count.
@@ -56,7 +75,8 @@ public class CashuPaymentRegistrar(
         InvoiceEntity invoice,
         LightMoney value,
         string paymentId,
-        bool markPaid = true
+        bool markPaid = true,
+        CashuPaymentData paymentDetails = null
     )
     {
         // Re-read invoice to avoid acting on stale payment list (caller's snapshot may miss a
@@ -85,7 +105,7 @@ public class CashuPaymentRegistrar(
                 InvoiceDataId = fresh.Id,
                 Amount = value.ToDecimal(LightMoneyUnit.BTC),
                 PaymentMethodId = handler.PaymentMethodId.ToString(),
-            }.Set(fresh, handler, new CashuPaymentData());
+            }.Set(fresh, handler, paymentDetails ?? new CashuPaymentData());
 
             // AddPayment swallows DbUpdateException on duplicate PK (Id, PaymentMethodId),
             // returning null — so simultaneous callers are safe even if the pre-check missed.
@@ -95,6 +115,10 @@ public class CashuPaymentRegistrar(
         if (markPaid && fresh.Status != InvoiceStatus.Settled)
         {
             await invoiceRepository.MarkInvoiceStatus(fresh.Id, InvoiceStatus.Settled);
+        }
+        else if (!markPaid && fresh.Status == InvoiceStatus.New)
+        {
+            await invoiceRepository.MarkInvoiceStatus(fresh.Id, InvoiceStatus.Processing);
         }
     }
 

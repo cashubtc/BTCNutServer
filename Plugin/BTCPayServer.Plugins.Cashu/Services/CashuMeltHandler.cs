@@ -34,7 +34,8 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
     ILogger<CashuMeltHandler> logs,
     MintManager mintManager,
     CashuPaymentRegistrar cashuPaymentRegistrar,
-    CashuDbContextFactory cashuDbContextFactory
+    CashuDbContextFactory cashuDbContextFactory,
+    PendingCashuPaymentProcessor pendingCashuPaymentProcessor
     )
 {
 
@@ -113,7 +114,7 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
             catch (Exception ex)
             {
                 logs.LogDebug(
-                    "(Cashu) ValidateLightningInvoicePaid threw for invoice {InvoiceId}: {Error}. Saving ftx for poller.",
+                    "(Cashu) ValidateLightningInvoicePaid threw for invoice {InvoiceId}: {Error}. Treating payment as pending.",
                     opCtx.Invoice.Id, ex.Message
                 );
                 lnInvPaid = false;
@@ -121,42 +122,20 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
 
             if (!lnInvPaid)
             {
-                var ftx = new FailedTransaction
-                {
-                    StoreId = opCtx.Store.Id,
-                    InvoiceId = opCtx.Invoice.Id,
-                    LastRetried = DateTimeOffset.UtcNow,
-                    MintUrl = opCtx.Token.Mint,
-                    Unit = opCtx.Token.Unit,
-                    InputProofs = opCtx.Token.Proofs.ToArray(),
-                    InputAmount = opCtx.Token.SumProofs,
-                    OperationType = OperationType.Melt,
-                    OutputData = meltResponse.BlankOutputs,
-                    MeltDetails = new MeltDetails
-                    {
-                        // if it's null it means it's already paid or expired
-                        Expiry = DateTimeOffset.FromUnixTimeSeconds(
-                            meltQuoteResponse.MeltQuote.Expiry ?? DateTime.UtcNow.UnixTimestamp()
-                        ),
-                        LightningInvoiceId = meltQuoteResponse.Invoice!.Id,
-                        MeltQuoteId = meltResponse.Quote!.Quote,
-                        // Assert status as pending, even if it's paid - lightning invoice has to be paid
-                        Status = "PENDING",
-                    },
-                    RetryCount = 1,
-                    Details =
-                        "Mint marked melt quote as paid, but lightning invoice state is unknown or still unpaid.",
-                };
-                await using var ctx = cashuDbContextFactory.CreateContext();
-                ctx.FailedTransactions.Add(ftx);
-                await ctx.SaveChangesAsync();
                 logs.LogDebug(
-                    "(Cashu) Melt quote paid but LN invoice unpaid for invoice {InvoiceId}. Saved as failed transaction.",
+                    "(Cashu) Melt quote paid but LN invoice is still pending for invoice {InvoiceId}. Registering pending payment.",
                     opCtx.Invoice.Id
                 );
-                throw new CashuPaymentException(
-                    $"There was a problem processing your request. Please contact the merchant with corresponding invoice Id: {opCtx.Invoice.Id}"
-                );
+                var pendingPaymentId = await cashuPaymentRegistrar.RegisterPending(
+                    opCtx,
+                    meltQuoteResponse.Invoice!.Id,
+                    meltQuoteResponse.Invoice?.Amount ?? opCtx.Value);
+                await pendingCashuPaymentProcessor.AddPayment(
+                    opCtx.Store.Id,
+                    opCtx.Invoice.Id,
+                    pendingPaymentId,
+                    meltQuoteResponse.Invoice.Id);
+                return;
             }
 
             var amountMelted = meltQuoteResponse.Invoice?.Amount ?? LightMoney.Zero;
@@ -245,7 +224,8 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
                         throw new MintOperationException("Melt failed after retry.");
 
                     case CashuPaymentState.Pending:
-                        // LN payment in flight at the mint. Persist ftx so the poller can finalize.
+                        // LN payment in flight at the mint. Persist ftx for recovery and mark the
+                        // BTCPay payment as pending instead of surfacing a failure to the user.
                         ftx.Details = pollResult.Error?.Message ?? "Melt pending after retry";
                         await using (var db = cashuDbContextFactory.CreateContext())
                         {
@@ -253,12 +233,19 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
                             await db.SaveChangesAsync(cancellationToken);
                         }
                         logs.LogDebug(
-                            "(Cashu) Melt pending after retry for invoice {InvoiceId}. Saved as failed transaction.",
+                            "(Cashu) Melt pending after retry for invoice {InvoiceId}. Recovery state saved; registering pending payment.",
                             opCtx.Invoice.Id
                         );
-                        throw new CashuPaymentException(
-                            $"There was a problem processing your request. Please contact the merchant with corresponding invoice Id: {opCtx.Invoice.Id}"
-                        );
+                        var pendingPaymentId = await cashuPaymentRegistrar.RegisterPending(
+                            opCtx,
+                            ftx.MeltDetails!.LightningInvoiceId,
+                            meltQuoteResponse.Invoice?.Amount ?? opCtx.Value);
+                        await pendingCashuPaymentProcessor.AddPayment(
+                            opCtx.Store.Id,
+                            opCtx.Invoice.Id,
+                            pendingPaymentId,
+                            ftx.MeltDetails.LightningInvoiceId);
+                        return;
                 }
             }
             catch (HttpRequestException)
@@ -292,7 +279,7 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
             catch (Exception ex)
             {
                 logs.LogDebug(
-                    "(Cashu) ValidateLightningInvoicePaid threw for invoice {InvoiceId}: {Error}. Saving ftx for poller.",
+                    "(Cashu) ValidateLightningInvoicePaid threw for invoice {InvoiceId}: {Error}. Treating payment as pending.",
                     opCtx.Invoice.Id, ex.Message
                 );
                 lnInvPaid = false;
@@ -339,12 +326,15 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
 
             if (!lnInvPaid)
             {
-                // LN not yet paid (or unknown). Payment wasn't registered — the customer must
-                // see failure so the merchant isn't left thinking the invoice settled.
-                // The poller will finalize if the LN payment eventually lands.
-                throw new CashuPaymentException(
-                    $"There was a problem processing your request. Please contact the merchant with corresponding invoice Id: {opCtx.Invoice.Id}"
-                );
+                var pendingPaymentId = await cashuPaymentRegistrar.RegisterPending(
+                    opCtx,
+                    meltQuoteResponse.Invoice!.Id,
+                    meltQuoteResponse.Invoice?.Amount ?? opCtx.Value);
+                await pendingCashuPaymentProcessor.AddPayment(
+                    opCtx.Store.Id,
+                    opCtx.Invoice.Id,
+                    pendingPaymentId,
+                    meltQuoteResponse.Invoice.Id);
             }
         }
         else

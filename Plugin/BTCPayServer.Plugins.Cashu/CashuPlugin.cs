@@ -44,6 +44,7 @@ public class CashuPlugin : BaseBTCPayServerPlugin
         services.AddSingleton<CashuMeltHandler>();
         services.AddSingleton<CashuSwapHandler>();
         services.AddSingleton<CashuPaymentService>();
+        services.AddSingleton<PendingCashuPaymentProcessor>();
         services.AddSingleton<RestoreService>();
         services.AddSingleton<StatefulWalletFactory>();
         services.AddSingleton<MintListener>();
@@ -70,6 +71,7 @@ public class CashuPlugin : BaseBTCPayServerPlugin
         services.AddHostedService(s => s.GetRequiredService<RestoreService>());
         services.AddHostedService(s => s.GetRequiredService<MintListener>());
         services.AddHostedService(s => s.GetRequiredService<FailedTransactionsPoller>());
+        services.AddHostedService(s => s.GetRequiredService<PendingCashuPaymentProcessor>());
 
         services.AddSingleton<ISwaggerProvider, CashuSwaggerProvider>();
 

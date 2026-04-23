@@ -109,7 +109,8 @@ public class CashuPaymentMethodHandler(
 
 public class CashuPaymentData
 {
-    // for now let's keep it as simple as possible.
+    public bool PendingSettlement { get; set; }
+    public string? LightningInvoiceId { get; set; }
 }
 
 public class CashuPaymentMethodDetails
