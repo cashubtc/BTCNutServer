@@ -63,7 +63,7 @@ public class GreenfieldCashuFailedTransactionsController(
             return this.CreateAPIError(404, "invoice-not-found",
                 "Invoice associated with this transaction was not found.");
         }
-        CashuPaymentService.PollResult pollResult;
+        PollResult pollResult;
         try
         {
             pollResult = await failedTransactionsPoller.PollTransaction(failedTransaction);

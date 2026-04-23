@@ -342,7 +342,7 @@ public class UICashuWalletController(
             return RedirectToAction("FailedTransactions", new { storeId = store.Id });
         }
 
-        CashuPaymentService.PollResult pollResult;
+        PollResult pollResult;
 
         try
         {

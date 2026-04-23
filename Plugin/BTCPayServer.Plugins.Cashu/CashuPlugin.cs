@@ -41,6 +41,8 @@ public class CashuPlugin : BaseBTCPayServerPlugin
         services.AddSingleton<MintManager>();
         services.AddSingleton<CashuStatusProvider>();
         services.AddSingleton<CashuPaymentRegistrar>();
+        services.AddSingleton<CashuMeltHandler>();
+        services.AddSingleton<CashuSwapHandler>();
         services.AddSingleton<CashuPaymentService>();
         services.AddSingleton<RestoreService>();
         services.AddSingleton<StatefulWalletFactory>();

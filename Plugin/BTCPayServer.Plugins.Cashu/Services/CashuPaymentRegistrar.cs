@@ -13,7 +13,6 @@ using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 using BTCPayServer.Plugins.Cashu.Data.Models;
-using BTCPayServer.Plugins.Cashu.PaymentHandlers;
 using BTCPayServer.Plugins.Cashu.PaymentMethod;
 using BTCPayServer.Services.Invoices;
 using DotNut;
@@ -104,17 +103,17 @@ public class CashuPaymentRegistrar(
     /// Throws on transient errors (network, DB) so the caller keeps ftx unresolved and retries later.
     /// Returns a terminal classification for permanent outcomes.
     /// </summary>
-    public async Task<CashuPaymentService.FtxPaymentRegistrationResult> RegisterPaymentForFailedTx(
+    public async Task<FtxPaymentRegistrationResult> RegisterPaymentForFailedTx(
         FailedTransaction ftx,
         CancellationToken ct = default
     )
     {
         var invoice = await invoiceRepository.GetInvoice(ftx.InvoiceId, true);
         if (invoice is null)
-            return CashuPaymentService.FtxPaymentRegistrationResult.InvoiceMissing;
+            return FtxPaymentRegistrationResult.InvoiceMissing;
 
         if (invoice.Status == InvoiceStatus.Settled)
-            return CashuPaymentService.FtxPaymentRegistrationResult.Registered;
+            return FtxPaymentRegistrationResult.Registered;
 
         // GetTokenSatRate throws HttpRequestException on mint outage — propagate so ftx stays
         // unresolved and the poller retries. Don't swallow as before (that hid lost payments).
@@ -139,11 +138,11 @@ public class CashuPaymentRegistrar(
                 "(Cashu) Can't determine payment amount for failed tx {Id}: InputAmount={InputAmount} currency={Currency}. Manual registration required.",
                 ftx.Id, ftx.InputAmount, invoice.Currency
             );
-            return CashuPaymentService.FtxPaymentRegistrationResult.UnresolvableAmount;
+            return FtxPaymentRegistrationResult.UnresolvableAmount;
         }
 
         await Register(invoice, paymentAmount, BuildPaymentIdForFtx(ftx));
-        return CashuPaymentService.FtxPaymentRegistrationResult.Registered;
+        return FtxPaymentRegistrationResult.Registered;
     }
     
     /// <summary>
@@ -219,6 +218,16 @@ public class CashuPaymentRegistrar(
                 }
             }
         }
+    }
+
+    public enum FtxPaymentRegistrationResult
+    {
+        /// <summary>Payment was added or already present; invoice is (or will be) settled.</summary>
+        Registered,
+        /// <summary>Invoice is gone. Nothing we can do — treat as resolved so poller stops retrying.</summary>
+        InvoiceMissing,
+        /// <summary>Input amount + currency combination can't produce a payment amount. Manual intervention required.</summary>
+        UnresolvableAmount,
     }
 
 }
