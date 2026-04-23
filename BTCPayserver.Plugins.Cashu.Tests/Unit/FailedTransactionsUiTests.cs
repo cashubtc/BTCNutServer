@@ -111,6 +111,7 @@ public class FailedTransactionsUiTests
             FailedTransactionReasons.Describe(FailedTransactionReasons.SwapMintConnectionBroken));
 
         Assert.True(FailedTransactionReasons.Descriptions.ContainsKey(FailedTransactionReasons.MeltPendingAfterRetry));
+        Assert.True(FailedTransactionReasons.Descriptions.ContainsKey(FailedTransactionReasons.MissingMeltDetails));
     }
 
     [Theory]

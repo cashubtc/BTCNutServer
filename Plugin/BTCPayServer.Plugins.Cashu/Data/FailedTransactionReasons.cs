@@ -16,6 +16,7 @@ public static class FailedTransactionReasons
     public const string StillPending = "still_pending";
     public const string MaxRetriesExceeded = "max_retries_exceeded";
     public const string DismissedByUser = "dismissed_by_user";
+    public const string MissingMeltDetails = "missing_melt_details";
     public const string LegacyUnknown = "legacy_unknown";
     public const string LegacyPending = "legacy_pending";
 
@@ -34,6 +35,7 @@ public static class FailedTransactionReasons
             [StillPending] = "Transaction is still pending.",
             [MaxRetriesExceeded] = "Automatic retries were exhausted.",
             [DismissedByUser] = "Dismissed by merchant.",
+            [MissingMeltDetails] = "Legacy or invalid melt transaction is missing melt details.",
             [LegacyUnknown] = "Legacy failed transaction imported before structured status tracking.",
             [LegacyPending] = "Legacy pending transaction imported before structured status tracking.",
         };

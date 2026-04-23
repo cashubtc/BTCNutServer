@@ -357,9 +357,13 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
         CancellationToken cts = default
     )
     {
-        if (ftx.OperationType != OperationType.Melt || ftx.MeltDetails == null)
+        if (ftx.OperationType != OperationType.Melt)
         {
             throw new InvalidOperationException($"Unexpected operation type: {ftx.OperationType}");
+        }
+        if (ftx.MeltDetails == null)
+        {
+            throw new InvalidOperationException("Melt transaction is missing melt details.");
         }
         var lightningClient = GetStoreLightningClient(storeData, handler.Network);
         var lnInvoice = await lightningClient.GetInvoice(ftx.MeltDetails.LightningInvoiceId, cts);

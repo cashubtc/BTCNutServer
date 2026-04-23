@@ -150,6 +150,27 @@ public class FailedTransactionsPoller(
                     Error = new InvalidOperationException($"Store {ftx.StoreId} not found")
                 };
 
+            if (ftx.OperationType == OperationType.Melt && ftx.MeltDetails == null)
+            {
+                await using var invalidDb = dbContextFactory.CreateContext();
+                invalidDb.FailedTransactions.Attach(ftx);
+                ftx.RetryCount++;
+                ftx.LastRetried = DateTimeOffset.UtcNow;
+                ftx.Status = FailedTransactionStatus.NeedsManualReview;
+                ftx.ReasonCode = FailedTransactionReasons.MissingMeltDetails;
+                ftx.Details = FailedTransactionReasons.Describe(FailedTransactionReasons.MissingMeltDetails);
+                await invalidDb.SaveChangesAsync(ct);
+                logger.LogWarning(
+                    "(Cashu) Failed tx {Id} (Invoice: {InvoiceId}) is a melt without melt details. Marking for manual review.",
+                    ftx.Id,
+                    ftx.InvoiceId);
+                return new PollResult
+                {
+                    State = CashuPaymentState.Failed,
+                    Error = new InvalidOperationException("Melt transaction is missing melt details")
+                };
+            }
+
             var result = ftx.OperationType == OperationType.Melt
                 ? await meltHandler.PollFailed(ftx, storeData, ct)
                 : await swapHandler.PollFailed(ftx, ct);
