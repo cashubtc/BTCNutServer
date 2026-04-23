@@ -17,6 +17,7 @@ namespace BTCPayServer.Plugins.Cashu.Services;
 public class FailedTransactionsPoller(
     CashuDbContextFactory dbContextFactory,
     CashuPaymentService cashuPaymentService,
+    CashuPaymentRegistrar cashuPaymentRegistrar,
     StoreRepository storeRepository,
     ILogger<FailedTransactionsPoller> logger
 ) : IHostedService, IDisposable
@@ -148,7 +149,7 @@ public class FailedTransactionsPoller(
                     // Register payment inside the same lock window. If this throws on a transient
                     // error (mint HTTP, DB), ftx stays unresolved — proofs are already safe in DB
                     // (idempotent insert) and the next retry replays cleanly.
-                    var registration = await cashuPaymentService.RegisterPaymentForFailedTx(ftx, ct);
+                    var registration = await cashuPaymentRegistrar.RegisterPaymentForFailedTx(ftx, ct);
                     switch (registration)
                     {
                         case CashuPaymentService.FtxPaymentRegistrationResult.Registered:
