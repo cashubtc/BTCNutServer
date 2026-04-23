@@ -1,37 +1,24 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using BTCPayServer.Configuration;
 using BTCPayServer.Data;
 using BTCPayServer.Lightning;
 using BTCPayServer.Logging;
-using BTCPayServer.Payments;
-using BTCPayServer.Payments.Lightning;
 using BTCPayServer.Plugins.Cashu.CashuAbstractions;
-using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.enums;
-using BTCPayServer.Plugins.Cashu.Data.Models;
 using BTCPayServer.Plugins.Cashu.Errors;
 using BTCPayServer.Plugins.Cashu.PaymentMethod;
 using BTCPayServer.Plugins.Cashu.Wallets;
-using BTCPayServer.Services;
 using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
 using DotNut;
 using DotNut.Api;
-using DotNut.ApiModels;
-using DotNut.JsonConverters;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using NBitcoin;
-using Npgsql;
 
-using InvoiceStatus = BTCPayServer.Client.Models.InvoiceStatus;
-using StoreData = BTCPayServer.Data.StoreData;
+
 
 namespace BTCPayServer.Plugins.Cashu.Services;
 
@@ -85,26 +72,7 @@ public class CashuPaymentService(
             throw new CashuPaymentException("Couldn't process the payment. Token wasn't spent.");
         }
 
-        var network = handler.Network;
-        LightMoney singleUnitSatoshiWorth;
-        try
-        {
-            singleUnitSatoshiWorth = await CashuUtils.GetTokenSatRate(
-                token,
-                network.NBitcoinNetwork
-            );
-        }
-        catch (HttpRequestException ex)
-        {
-            var mintUrl = token.Tokens.FirstOrDefault()?.Mint ?? "unknown mint";
-            logs.PayServer.LogDebug("(Cashu) Couldn't connect to mint {MintUrl} for invoice {InvoiceId}", mintUrl, invoiceId);
-            throw new MintUnreachableException(mintUrl, ex);
-        }
-        catch (CashuProtocolException ex)
-        {
-            logs.PayServer.LogDebug("(Cashu) Protocol error for invoice {InvoiceId}: {Error}", invoiceId, ex.Message);
-            throw new CashuPaymentException(ex.Message, ex);
-        }
+        LightMoney singleUnitSatoshiWorth = await GetTokenWorth(token, invoice.Id);
 
         var invoiceAmount = Money.Coins(
             invoice.GetPaymentPrompt(CashuPlugin.CashuPmid)?.Calculate().Due ?? invoice.Price
@@ -167,5 +135,27 @@ public class CashuPaymentService(
             throw new UntrustedMintException(ctx.Token.Mint);
         }
     }
-    
+
+    private async Task<LightMoney> GetTokenWorth(CashuToken token, string invoiceId)
+    {
+        var network = handler.Network;
+        try
+        {
+            return await CashuUtils.GetTokenSatRate(
+                token,
+                network.NBitcoinNetwork
+            );
+        }
+        catch (HttpRequestException ex)
+        {
+            var mintUrl = token.Tokens.FirstOrDefault()?.Mint ?? "unknown mint";
+            logs.PayServer.LogDebug("(Cashu) Couldn't connect to mint {MintUrl} for invoice {InvoiceId}", mintUrl, invoiceId);
+            throw new MintUnreachableException(mintUrl, ex);
+        }
+        catch (CashuProtocolException ex)
+        {
+            logs.PayServer.LogDebug("(Cashu) Protocol error for invoice {InvoiceId}: {Error}", invoiceId, ex.Message);
+            throw new CashuPaymentException(ex.Message, ex);
+        }
+    }
 }

@@ -26,7 +26,7 @@ using NBitcoin;
 
 namespace BTCPayServer.Plugins.Cashu.Services;
 
-public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory, 
+public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
     IOptions<LightningNetworkOptions> lightningNetworkOptions,
     CashuPaymentMethodHandler handler,
     PaymentMethodHandlerDictionary handlers,
@@ -37,7 +37,7 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
     CashuDbContextFactory cashuDbContextFactory
     )
 {
-    
+
     public async Task ExecuteAsync(
         CashuOperationContext opCtx,
         CancellationToken cancellationToken
@@ -353,7 +353,7 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
             throw new MintOperationException("Melt failed unexpectedly.", meltResponse.Error!);
         }
     }
-    
+
     public async Task<PollResult> PollFailed(
         FailedTransaction ftx,
         StoreData storeData,
@@ -436,7 +436,7 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
 
         return new PollResult() { State = CashuPaymentState.Pending };
     }
-    
+
     private ILightningClient GetStoreLightningClient(StoreData store, BTCPayNetwork network)
     {
         var lightningPmi = PaymentTypes.LN.GetPaymentMethodId(network.CryptoCode);
@@ -455,7 +455,7 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
             lightningClientFactoryService
         );
     }
-        
+
     private CashuPaymentState CompareMeltQuotes(
         MeltDetails prevMeltState,
         PostMeltQuoteBolt11Response currentMeltState

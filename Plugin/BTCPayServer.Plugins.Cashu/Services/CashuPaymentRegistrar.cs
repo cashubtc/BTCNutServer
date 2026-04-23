@@ -32,12 +32,12 @@ public class CashuPaymentRegistrar(
     CashuDbContextFactory cashuDbContextFactory
     )
 {
-    
+
     private static readonly JsonSerializerOptions SecretJsonOptions = new()
     {
         Converters = { new SecretJsonConverter() }
     };
-    
+
     public Task Register(
         CashuOperationContext ctx,
         LightMoney value = null,
@@ -97,8 +97,8 @@ public class CashuPaymentRegistrar(
             await invoiceRepository.MarkInvoiceStatus(fresh.Id, InvoiceStatus.Settled);
         }
     }
-    
-        /// <summary>
+
+    /// <summary>
     /// Registers payment for a recovered FailedTransaction. Idempotent.
     /// Throws on transient errors (network, DB) so the caller keeps ftx unresolved and retries later.
     /// Returns a terminal classification for permanent outcomes.
@@ -144,7 +144,7 @@ public class CashuPaymentRegistrar(
         await Register(invoice, paymentAmount, BuildPaymentIdForFtx(ftx));
         return FtxPaymentRegistrationResult.Registered;
     }
-    
+
     /// <summary>
     /// Deterministic payment identifier derived from invoice + input proof secrets.
     /// Same (invoice, token) always yields the same ID so retries are idempotent at the DB layer.
@@ -171,7 +171,7 @@ public class CashuPaymentRegistrar(
             ? BuildPaymentId(ftx.InvoiceId, inputs)
             : "cashu-ftx-" + ftx.Id.ToString("N");
     }
-    
+
     public async Task AddProofsToDb(
         IEnumerable<Proof>? proofs,
         string storeId,

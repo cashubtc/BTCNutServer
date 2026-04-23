@@ -471,7 +471,7 @@ public class StatefulWallet : IDisposable
 
         return StateResponseItem.TokenState.UNSPENT;
     }
-    
+
 
     public async Task<PostRestoreResponse> RestoreProofsFromInputs(
         BlindedMessage[] blindedMessages,
@@ -500,48 +500,48 @@ public class StatefulWallet : IDisposable
 
         return invoice?.Status == LightningInvoiceStatus.Paid;
     }
-    
-  //   public async Task<bool> ValidateLightningInvoicePaid(string? invoiceId,                                                                                                                                                                                                         
-  //     TimeSpan? timeout = null, CancellationToken ct = default)
-  // {
-  //     if (_lightningClient is null)
-  //     {
-  //         throw new CashuPluginException("Lightning Client has not been configured.");
-  //     }
-  //     
-  //     var invoice = await _lightningClient.GetInvoice(invoiceId, ct);
-  //     if (invoice?.Status == LightningInvoiceStatus.Paid)
-  //     {
-  //         return true;
-  //     }
-  //     if (invoice?.Status == LightningInvoiceStatus.Expired)
-  //     {
-  //         return false;
-  //     }
-  //
-  //     using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);                                                                                                                                                                                                        
-  //     cts.CancelAfter(timeout ?? TimeSpan.FromSeconds(60));
-  //     try                                                                                                                                                                                                                                                                         
-  //     {
-  //         using var listener = await _lightningClient.Listen(cts.Token);
-  //         while (true)                                                                                                                                                                                                                                                            
-  //         {
-  //             var paid = await listener.WaitInvoice(cts.Token);
-  //             if (paid is null)
-  //             {
-  //                 continue;
-  //             }
-  //             if (paid.Id == invoiceId && paid.Status == LightningInvoiceStatus.Paid)
-  //             {
-  //                 return true;
-  //             }                                                                                                                                                                                      
-  //         }
-  //     }                                                                                                                                                                                                                                                                           
-  //     catch (OperationCanceledException) { }
-  //     
-  //     invoice = await _lightningClient.GetInvoice(invoiceId, ct);
-  //     return invoice?.Status == LightningInvoiceStatus.Paid;                                                                                                                                                                                                                      
-  // }               
+
+    //   public async Task<bool> ValidateLightningInvoicePaid(string? invoiceId,                                                                                                                                                                                                         
+    //     TimeSpan? timeout = null, CancellationToken ct = default)
+    // {
+    //     if (_lightningClient is null)
+    //     {
+    //         throw new CashuPluginException("Lightning Client has not been configured.");
+    //     }
+    //     
+    //     var invoice = await _lightningClient.GetInvoice(invoiceId, ct);
+    //     if (invoice?.Status == LightningInvoiceStatus.Paid)
+    //     {
+    //         return true;
+    //     }
+    //     if (invoice?.Status == LightningInvoiceStatus.Expired)
+    //     {
+    //         return false;
+    //     }
+    //
+    //     using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);                                                                                                                                                                                                        
+    //     cts.CancelAfter(timeout ?? TimeSpan.FromSeconds(60));
+    //     try                                                                                                                                                                                                                                                                         
+    //     {
+    //         using var listener = await _lightningClient.Listen(cts.Token);
+    //         while (true)                                                                                                                                                                                                                                                            
+    //         {
+    //             var paid = await listener.WaitInvoice(cts.Token);
+    //             if (paid is null)
+    //             {
+    //                 continue;
+    //             }
+    //             if (paid.Id == invoiceId && paid.Status == LightningInvoiceStatus.Paid)
+    //             {
+    //                 return true;
+    //             }                                                                                                                                                                                      
+    //         }
+    //     }                                                                                                                                                                                                                                                                           
+    //     catch (OperationCanceledException) { }
+    //     
+    //     invoice = await _lightningClient.GetInvoice(invoiceId, ct);
+    //     return invoice?.Status == LightningInvoiceStatus.Paid;                                                                                                                                                                                                                      
+    // }               
 
     public async Task<PostMeltQuoteBolt11Response> CheckMeltQuoteState(
         string meltQuoteId,

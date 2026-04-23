@@ -17,9 +17,9 @@ using Microsoft.Extensions.Logging;
 namespace BTCPayServer.Plugins.Cashu.Services;
 
 public class CashuSwapHandler(
-    StatefulWalletFactory statefulWalletFactory, 
-    MintManager mintManager, 
-    CashuPaymentRegistrar cashuPaymentRegistrar, 
+    StatefulWalletFactory statefulWalletFactory,
+    MintManager mintManager,
+    CashuPaymentRegistrar cashuPaymentRegistrar,
     CashuDbContextFactory cashuDbContextFactory,
     ILogger<CashuSwapHandler> logs)
 {

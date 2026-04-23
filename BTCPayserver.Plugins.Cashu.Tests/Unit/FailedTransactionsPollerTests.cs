@@ -34,7 +34,7 @@ public class FailedTransactionsPollerTests(ITestOutputHelper output)
 
     private BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller CreatePoller(
         TestDbFactory db) =>
-        new(db, null!, null!,null!, new XunitLogger<BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller>(output), null!, null!)
+        new(db, null!, null!, null!, new XunitLogger<BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller>(output), null!, null!)
         {
             PollInterval = TimeSpan.FromDays(1), // disable auto-polling in unit tests
         };
@@ -122,7 +122,7 @@ public class FailedTransactionsPollerTests(ITestOutputHelper output)
         var db = TestDbFactory.Create();
         // Use real constructor defaults (not CreatePoller which overrides PollInterval)
         var poller = new BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller(
-            db, null!, null!,null!,
+            db, null!, null!, null!,
             new XunitLogger<BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller>(output), null!, null!);
 
         Assert.Equal(TimeSpan.FromMinutes(2), poller.PollInterval);
@@ -133,7 +133,7 @@ public class FailedTransactionsPollerTests(ITestOutputHelper output)
     {
         var db = TestDbFactory.Create();
         var poller = new BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller(
-            db, null!, null!,null!,
+            db, null!, null!, null!,
             new XunitLogger<BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller>(output), null!, null!);
 
         Assert.Equal(50, poller.BatchSize);
@@ -144,7 +144,7 @@ public class FailedTransactionsPollerTests(ITestOutputHelper output)
     {
         var db = TestDbFactory.Create();
         var poller = new BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller(
-            db, null!, null!,null!,
+            db, null!, null!, null!,
             new XunitLogger<BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller>(output), null!, null!);
 
         Assert.Equal(3, poller.MaxConcurrencyPerMint);
