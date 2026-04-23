@@ -79,8 +79,12 @@ public record FailedTransactionResponseDto(
     string Unit,
     ulong InputAmount,
     string OperationType,
+    DateTimeOffset CreatedAt,
     int RetryCount,
     DateTimeOffset LastRetried,
-    bool Resolved,
+    string Status,
+    bool CanRetry,
+    bool CanDismiss,
+    string? ReasonCode,
     string? Details
 );

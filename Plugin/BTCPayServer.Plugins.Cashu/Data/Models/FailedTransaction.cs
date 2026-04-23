@@ -42,10 +42,28 @@ public class FailedTransaction
     // For melt operation these will be for fee return. For swap these will contain outputs sent to mint.
     public required List<OutputData> OutputData { get; set; }
     public MeltDetails? MeltDetails { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public required int RetryCount { get; set; }
     public required DateTimeOffset LastRetried { get; set; }
+    public FailedTransactionStatus Status { get; set; } = FailedTransactionStatus.Pending;
+    public string? ReasonCode { get; set; }
+    public DateTimeOffset? DismissedAt { get; set; }
     public string? Details { get; set; }
-    public bool Resolved { get; set; }
+
+    [NotMapped]
+    public bool CanRetryManually =>
+        Status is FailedTransactionStatus.Pending
+            or FailedTransactionStatus.FailedTerminal
+            or FailedTransactionStatus.NeedsManualReview;
+
+    [NotMapped]
+    public bool CanDismiss => Status != FailedTransactionStatus.Dismissed;
+
+    [NotMapped]
+    public bool IsRecovered => Status == FailedTransactionStatus.Recovered;
+
+    [NotMapped]
+    public bool IsVisibleInDefaultList => Status != FailedTransactionStatus.Dismissed;
 }
 
 public class MeltDetails
@@ -60,4 +78,13 @@ public enum OperationType
 {
     Swap,
     Melt,
+}
+
+public enum FailedTransactionStatus
+{
+    Pending,
+    Recovered,
+    FailedTerminal,
+    NeedsManualReview,
+    Dismissed,
 }

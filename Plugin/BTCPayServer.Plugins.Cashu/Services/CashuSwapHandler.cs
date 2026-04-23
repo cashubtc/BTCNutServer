@@ -80,6 +80,7 @@ public class CashuSwapHandler(
                         {
                             InvoiceId = ctx.Invoice.Id,
                             StoreId = ctx.Invoice.StoreId,
+                            CreatedAt = DateTimeOffset.UtcNow,
                             LastRetried = DateTimeOffset.UtcNow,
                             MintUrl = ctx.Token.Mint,
                             InputProofs = ctx.Token.Proofs.ToArray(),
@@ -88,7 +89,9 @@ public class CashuSwapHandler(
                             OutputData = swapResult.ProvidedOutputs,
                             Unit = ctx.Token.Unit,
                             RetryCount = 0,
-                            Details = "Connection with mint broken while swap",
+                            Status = FailedTransactionStatus.Pending,
+                            ReasonCode = FailedTransactionReasons.SwapMintConnectionBroken,
+                            Details = FailedTransactionReasons.Describe(FailedTransactionReasons.SwapMintConnectionBroken),
                         };
                         var pollResult = await PollFailed(ftx, cts);
 
@@ -135,6 +138,7 @@ public class CashuSwapHandler(
             {
                 InvoiceId = ctx.Invoice.Id,
                 StoreId = ctx.Invoice.StoreId,
+                CreatedAt = DateTimeOffset.UtcNow,
                 LastRetried = DateTimeOffset.UtcNow,
                 MintUrl = ctx.Token.Mint,
                 InputProofs = ctx.Token.Proofs.ToArray(),
@@ -143,8 +147,9 @@ public class CashuSwapHandler(
                 OutputData = swapResult.ProvidedOutputs,
                 Unit = ctx.Token.Unit,
                 RetryCount = 0,
-                Details =
-                    "Mint Returned less signatures than was requested. Even though, merchant received the payment",
+                Status = FailedTransactionStatus.NeedsManualReview,
+                ReasonCode = FailedTransactionReasons.SwapMintReturnedLessSignatures,
+                Details = FailedTransactionReasons.Describe(FailedTransactionReasons.SwapMintReturnedLessSignatures),
             };
 
             // Save FailedTransaction for manual recovery

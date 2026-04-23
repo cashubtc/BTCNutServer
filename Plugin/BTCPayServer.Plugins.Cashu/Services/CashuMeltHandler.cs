@@ -165,6 +165,7 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
             {
                 StoreId = opCtx.Store.Id,
                 InvoiceId = opCtx.Invoice.Id,
+                CreatedAt = DateTimeOffset.UtcNow,
                 LastRetried = DateTimeOffset.UtcNow,
                 MintUrl = opCtx.Token.Mint,
                 Unit = opCtx.Token.Unit,
@@ -183,6 +184,7 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
                     Status = "PENDING",
                 },
                 RetryCount = 1,
+                Status = FailedTransactionStatus.Pending,
             };
             try
             {
@@ -226,7 +228,8 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
                     case CashuPaymentState.Pending:
                         // LN payment in flight at the mint. Persist ftx for recovery and mark the
                         // BTCPay payment as pending instead of surfacing a failure to the user.
-                        ftx.Details = pollResult.Error?.Message ?? "Melt pending after retry";
+                        ftx.ReasonCode = FailedTransactionReasons.MeltPendingAfterRetry;
+                        ftx.Details = pollResult.Error?.Message ?? FailedTransactionReasons.Describe(FailedTransactionReasons.MeltPendingAfterRetry);
                         await using (var db = cashuDbContextFactory.CreateContext())
                         {
                             await db.FailedTransactions.AddAsync(ftx, cancellationToken);
@@ -250,7 +253,8 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
             }
             catch (HttpRequestException)
             {
-                ftx.Details = "Network error during melt retry; mint unreachable";
+                ftx.ReasonCode = FailedTransactionReasons.MeltRetryMintUnreachable;
+                ftx.Details = FailedTransactionReasons.Describe(FailedTransactionReasons.MeltRetryMintUnreachable);
                 logs.LogDebug(
                     "(Cashu) Network error during melt for invoice {InvoiceId}. Saved as failed transaction.",
                     opCtx.Invoice.Id
@@ -301,6 +305,7 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
             {
                 StoreId = opCtx.Store.Id,
                 InvoiceId = opCtx.Invoice.Id,
+                CreatedAt = DateTimeOffset.UtcNow,
                 LastRetried = DateTimeOffset.UtcNow,
                 MintUrl = opCtx.Token.Mint,
                 Unit = opCtx.Token.Unit,
@@ -318,7 +323,9 @@ public class CashuMeltHandler(StatefulWalletFactory statefulWalletFactory,
                     Status = lnInvPaid ? "PAID" : "PENDING",
                 },
                 RetryCount = 1,
-                Details = $"Melt succeeded at mint but local SaveProofs failed. Error: {meltResponse.Error?.Message}",
+                Status = lnInvPaid ? FailedTransactionStatus.NeedsManualReview : FailedTransactionStatus.Pending,
+                ReasonCode = FailedTransactionReasons.MeltSaveProofsFailed,
+                Details = $"{FailedTransactionReasons.Describe(FailedTransactionReasons.MeltSaveProofsFailed)} Error: {meltResponse.Error?.Message}",
             };
             await using var ctx = cashuDbContextFactory.CreateContext();
             ctx.FailedTransactions.Add(ftx);

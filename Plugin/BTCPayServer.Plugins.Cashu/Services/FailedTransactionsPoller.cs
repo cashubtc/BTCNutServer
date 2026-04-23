@@ -16,7 +16,6 @@ namespace BTCPayServer.Plugins.Cashu.Services;
 
 public class FailedTransactionsPoller(
     CashuDbContextFactory dbContextFactory,
-    CashuPaymentService cashuPaymentService,
     CashuPaymentRegistrar cashuPaymentRegistrar,
     StoreRepository storeRepository,
     ILogger<FailedTransactionsPoller> logger,
@@ -80,8 +79,14 @@ public class FailedTransactionsPoller(
         FailedTransaction ftx,
         CancellationToken ct = default)
     {
-        if (ftx.Resolved)
+        if (ftx.Status == FailedTransactionStatus.Recovered)
             return new PollResult { State = CashuPaymentState.Success };
+        if (ftx.Status == FailedTransactionStatus.Dismissed)
+            return new PollResult
+            {
+                State = CashuPaymentState.Failed,
+                Error = new InvalidOperationException("Failed transaction is dismissed")
+            };
 
         var lockSem = _ftxLocks.GetOrAdd(ftx.Id, _ => new SemaphoreSlim(1, 1));
         await lockSem.WaitAsync(ct);
@@ -103,17 +108,37 @@ public class FailedTransactionsPoller(
                         Error = new InvalidOperationException($"Failed transaction {ftx.Id} no longer exists")
                     };
 
-                if (current.Resolved)
+                if (current.Status == FailedTransactionStatus.Recovered)
                 {
-                    ftx.Resolved = true;
+                    ftx.Status = current.Status;
+                    ftx.ReasonCode = current.ReasonCode;
                     ftx.Details = current.Details;
                     ftx.RetryCount = current.RetryCount;
                     ftx.LastRetried = current.LastRetried;
+                    ftx.DismissedAt = current.DismissedAt;
                     return new PollResult { State = CashuPaymentState.Success };
+                }
+                if (current.Status == FailedTransactionStatus.Dismissed)
+                {
+                    ftx.Status = current.Status;
+                    ftx.ReasonCode = current.ReasonCode;
+                    ftx.Details = current.Details;
+                    ftx.RetryCount = current.RetryCount;
+                    ftx.LastRetried = current.LastRetried;
+                    ftx.DismissedAt = current.DismissedAt;
+                    return new PollResult
+                    {
+                        State = CashuPaymentState.Failed,
+                        Error = new InvalidOperationException("Failed transaction is dismissed")
+                    };
                 }
 
                 ftx.RetryCount = current.RetryCount;
                 ftx.LastRetried = current.LastRetried;
+                ftx.Status = current.Status;
+                ftx.ReasonCode = current.ReasonCode;
+                ftx.CreatedAt = current.CreatedAt;
+                ftx.DismissedAt = current.DismissedAt;
                 ftx.Details = current.Details;
             }
 
@@ -155,22 +180,25 @@ public class FailedTransactionsPoller(
                     switch (registration)
                     {
                         case CashuPaymentRegistrar.FtxPaymentRegistrationResult.Registered:
-                            ftx.Resolved = true;
-                            ftx.Details = "Resolved by poller";
+                            ftx.Status = FailedTransactionStatus.Recovered;
+                            ftx.ReasonCode = FailedTransactionReasons.ResolvedByPoller;
+                            ftx.Details = FailedTransactionReasons.Describe(FailedTransactionReasons.ResolvedByPoller);
                             logger.LogInformation(
                                 "(Cashu) Resolved failed tx {Id} (Invoice: {InvoiceId})",
                                 ftx.Id, ftx.InvoiceId);
                             break;
                         case CashuPaymentRegistrar.FtxPaymentRegistrationResult.InvoiceMissing:
-                            ftx.Resolved = true;
-                            ftx.Details = "Invoice no longer exists; proofs retained, no payment to register";
+                            ftx.Status = FailedTransactionStatus.NeedsManualReview;
+                            ftx.ReasonCode = FailedTransactionReasons.InvoiceMissing;
+                            ftx.Details = FailedTransactionReasons.Describe(FailedTransactionReasons.InvoiceMissing);
                             logger.LogWarning(
                                 "(Cashu) ftx {Id} resolved but invoice {InvoiceId} is gone — proofs retained",
                                 ftx.Id, ftx.InvoiceId);
                             break;
                         case CashuPaymentRegistrar.FtxPaymentRegistrationResult.UnresolvableAmount:
-                            ftx.Resolved = true;
-                            ftx.Details = "Cannot derive payment amount — manual registration required";
+                            ftx.Status = FailedTransactionStatus.NeedsManualReview;
+                            ftx.ReasonCode = FailedTransactionReasons.UnresolvableAmount;
+                            ftx.Details = FailedTransactionReasons.Describe(FailedTransactionReasons.UnresolvableAmount);
                             logger.LogError(
                                 "(Cashu) ftx {Id} (Invoice: {InvoiceId}) needs manual payment registration — amount unresolvable",
                                 ftx.Id, ftx.InvoiceId);
@@ -179,8 +207,9 @@ public class FailedTransactionsPoller(
                     break;
 
                 case CashuPaymentState.Failed:
-                    ftx.Resolved = true;
-                    ftx.Details = result.Error?.Message ?? "Permanently failed";
+                    ftx.Status = FailedTransactionStatus.FailedTerminal;
+                    ftx.ReasonCode = FailedTransactionReasons.PermanentlyFailed;
+                    ftx.Details = result.Error?.Message ?? FailedTransactionReasons.Describe(FailedTransactionReasons.PermanentlyFailed);
                     logger.LogWarning(
                         "(Cashu) Failed tx {Id} is permanently failed: {Details}",
                         ftx.Id, ftx.Details);
@@ -189,15 +218,18 @@ public class FailedTransactionsPoller(
                 case CashuPaymentState.Pending:
                     if (ftx.RetryCount >= MaxRetries)
                     {
-                        ftx.Resolved = true;
-                        ftx.Details = $"Gave up after {MaxRetries} retries";
+                        ftx.Status = FailedTransactionStatus.NeedsManualReview;
+                        ftx.ReasonCode = FailedTransactionReasons.MaxRetriesExceeded;
+                        ftx.Details = FailedTransactionReasons.Describe(FailedTransactionReasons.MaxRetriesExceeded);
                         logger.LogWarning(
                             "(Cashu) Giving up on failed tx {Id} (Invoice: {InvoiceId}) after {MaxRetries} retries",
                             ftx.Id, ftx.InvoiceId, MaxRetries);
                     }
                     else
                     {
-                        ftx.Details = result.Error?.Message ?? "Still pending";
+                        ftx.Status = FailedTransactionStatus.Pending;
+                        ftx.ReasonCode = FailedTransactionReasons.StillPending;
+                        ftx.Details = result.Error?.Message ?? FailedTransactionReasons.Describe(FailedTransactionReasons.StillPending);
                     }
                     break;
             }
@@ -221,8 +253,8 @@ public class FailedTransactionsPoller(
         {
             await using var db = dbContextFactory.CreateContext();
             var unresolvedTxs = await db.FailedTransactions
-                .Where(ft => !ft.Resolved)
-                .OrderBy(ft => ft.LastRetried)
+                .Where(ft => ft.Status == FailedTransactionStatus.Pending)
+                .OrderBy(ft => ft.CreatedAt)
                 .Take(BatchSize)
                 .ToListAsync(ct);
 

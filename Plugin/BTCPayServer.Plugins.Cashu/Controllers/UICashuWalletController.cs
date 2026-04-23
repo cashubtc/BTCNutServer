@@ -295,12 +295,19 @@ public class UICashuWalletController(
     {
         if (StoreData is not { } store) return NotFound();
         await using var db = cashuDbContextFactory.CreateContext();
-        //fetch recently failed transactions
         var failedTransactions = await db
             .FailedTransactions.Where(ft => ft.StoreId == store.Id)
+            .Where(ft => ft.Status != FailedTransactionStatus.Dismissed)
+            .OrderByDescending(ft => ft.CreatedAt)
             .ToListAsync();
 
-        return View("Views/Cashu/FailedTransactions.cshtml", failedTransactions);
+        var viewModel = new FailedTransactionsViewModel
+        {
+            StoreId = store.Id,
+            Transactions = failedTransactions.Select(ToListItem).ToList()
+        };
+
+        return View("Views/Cashu/FailedTransactions.cshtml", viewModel);
     }
 
     [HttpPost("{storeId}/cashu/failed-transactions")]
@@ -326,10 +333,16 @@ public class UICashuWalletController(
             return RedirectToAction("FailedTransactions", new { storeId = store.Id });
         }
 
-        if (failedTransaction.Resolved)
+        if (failedTransaction.Status == FailedTransactionStatus.Recovered)
         {
             TempData[WellKnownTempData.SuccessMessage] =
-                "This transaction is already resolved.";
+                "This transaction is already recovered.";
+            return RedirectToAction("FailedTransactions", new { storeId = store.Id });
+        }
+        if (failedTransaction.Status == FailedTransactionStatus.Dismissed)
+        {
+            TempData[WellKnownTempData.ErrorMessage] =
+                "Dismissed transactions cannot be retried.";
             return RedirectToAction("FailedTransactions", new { storeId = store.Id });
         }
 
@@ -366,6 +379,54 @@ public class UICashuWalletController(
             "Transaction retrieved successfully. Marked as paid.";
         return RedirectToAction("FailedTransactions", new { storeId = store.Id });
     }
+
+    [HttpPost("{storeId}/cashu/failed-transactions/{failedTransactionId}/dismiss")]
+    public async Task<IActionResult> DismissFailedTransaction(string storeId, Guid failedTransactionId)
+    {
+        if (StoreData is not { } store) return NotFound();
+        await using var db = cashuDbContextFactory.CreateContext();
+
+        var failedTransaction = await db.FailedTransactions.SingleOrDefaultAsync(t => t.Id == failedTransactionId);
+        if (failedTransaction == null)
+        {
+            TempData[WellKnownTempData.ErrorMessage] = "Can't get failed transaction with provided GUID!";
+            return RedirectToAction("FailedTransactions", new { storeId = store.Id });
+        }
+
+        if (failedTransaction.StoreId != store.Id)
+        {
+            TempData[WellKnownTempData.ErrorMessage] = "Chosen failed transaction doesn't belong to this store!";
+            return RedirectToAction("FailedTransactions", new { storeId = store.Id });
+        }
+
+        failedTransaction.Status = FailedTransactionStatus.Dismissed;
+        failedTransaction.ReasonCode = FailedTransactionReasons.DismissedByUser;
+        failedTransaction.Details = FailedTransactionReasons.Describe(FailedTransactionReasons.DismissedByUser);
+        failedTransaction.DismissedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+
+        TempData[WellKnownTempData.SuccessMessage] = "Transaction dismissed.";
+        return RedirectToAction("FailedTransactions", new { storeId = store.Id });
+    }
+
+    private static FailedTransactionListItemViewModel ToListItem(FailedTransaction ft) => new()
+    {
+        FailedTransactionId = ft.Id,
+        InvoiceId = ft.InvoiceId,
+        MintUrl = ft.MintUrl,
+        Unit = ft.Unit,
+        InputAmount = ft.InputAmount,
+        OperationLabel = ft.OperationType == OperationType.Swap ? "Swap" : "Melt",
+        CreatedAt = ft.CreatedAt,
+        LastRetried = ft.LastRetried,
+        RetryCount = ft.RetryCount,
+        Status = ft.Status.ToString(),
+        CanRetry = ft.CanRetryManually,
+        CanDismiss = ft.CanDismiss,
+        ReasonCode = ft.ReasonCode,
+        ReasonLabel = ft.ReasonCode is null ? null : FailedTransactionReasons.Describe(ft.ReasonCode),
+        Details = ft.Details
+    };
 
     [HttpGet("~/cashu/mint-info")]
     public async Task<IActionResult> GetMintInfo(string mintUrl)

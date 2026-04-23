@@ -127,7 +127,12 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
         {
             entity.HasKey(t => t.Id);
             entity.HasIndex(t => t.InvoiceId);
+            entity.HasIndex(t => t.Status);
+            entity.HasIndex(t => t.CreatedAt);
             entity.OwnsOne(t => t.MeltDetails);
+            entity
+                .Property(t => t.Status)
+                .HasConversion<string>();
 
 
             entity

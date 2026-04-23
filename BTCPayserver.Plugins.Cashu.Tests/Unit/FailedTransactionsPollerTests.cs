@@ -1,3 +1,4 @@
+using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Data.Models;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -17,7 +18,7 @@ public class FailedTransactionsPollerTests(ITestOutputHelper output)
 
     private static FailedTransaction MakeFailedTx(
         string mintUrl = MintUrl,
-        bool resolved = false,
+        FailedTransactionStatus status = FailedTransactionStatus.Pending,
         OperationType type = OperationType.Melt) => new()
         {
             InvoiceId = InvoiceId,
@@ -28,13 +29,15 @@ public class FailedTransactionsPollerTests(ITestOutputHelper output)
             OperationType = type,
             OutputData = [],
             RetryCount = 0,
+            CreatedAt = DateTimeOffset.UtcNow,
             LastRetried = DateTimeOffset.UtcNow,
-            Resolved = resolved,
+            Status = status,
+            ReasonCode = FailedTransactionReasons.StillPending,
         };
 
     private BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller CreatePoller(
         TestDbFactory db) =>
-        new(db, null!, null!, null!, new XunitLogger<BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller>(output), null!, null!)
+        new(db, null!, null!, new XunitLogger<BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller>(output), null!, null!)
         {
             PollInterval = TimeSpan.FromDays(1), // disable auto-polling in unit tests
         };
@@ -67,7 +70,7 @@ public class FailedTransactionsPollerTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task FailedTx_SetsResolvedFalse()
+    public async Task FailedTx_DefaultsToPendingStatus()
     {
         var db = TestDbFactory.Create();
         var ftx = MakeFailedTx();
@@ -75,7 +78,7 @@ public class FailedTransactionsPollerTests(ITestOutputHelper output)
 
         await using var ctx = db.CreateContext();
         var saved = await ctx.FailedTransactions.FirstAsync(f => f.Id == ftx.Id);
-        Assert.False(saved.Resolved);
+        Assert.Equal(FailedTransactionStatus.Pending, saved.Status);
     }
 
     [Theory]
@@ -122,7 +125,7 @@ public class FailedTransactionsPollerTests(ITestOutputHelper output)
         var db = TestDbFactory.Create();
         // Use real constructor defaults (not CreatePoller which overrides PollInterval)
         var poller = new BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller(
-            db, null!, null!, null!,
+            db, null!, null!,
             new XunitLogger<BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller>(output), null!, null!);
 
         Assert.Equal(TimeSpan.FromMinutes(2), poller.PollInterval);
@@ -133,7 +136,7 @@ public class FailedTransactionsPollerTests(ITestOutputHelper output)
     {
         var db = TestDbFactory.Create();
         var poller = new BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller(
-            db, null!, null!, null!,
+            db, null!, null!,
             new XunitLogger<BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller>(output), null!, null!);
 
         Assert.Equal(50, poller.BatchSize);
@@ -144,7 +147,7 @@ public class FailedTransactionsPollerTests(ITestOutputHelper output)
     {
         var db = TestDbFactory.Create();
         var poller = new BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller(
-            db, null!, null!, null!,
+            db, null!, null!,
             new XunitLogger<BTCPayServer.Plugins.Cashu.Services.FailedTransactionsPoller>(output), null!, null!);
 
         Assert.Equal(3, poller.MaxConcurrencyPerMint);
@@ -152,23 +155,23 @@ public class FailedTransactionsPollerTests(ITestOutputHelper output)
 
 
     [Fact]
-    public async Task ResolvedTransactions_AreFilteredInDB()
+    public async Task PendingTransactions_AreFilteredInDB()
     {
         var db = TestDbFactory.Create();
 
         await using (var ctx = db.CreateContext())
         {
             ctx.FailedTransactions.AddRange(
-                MakeFailedTx(resolved: false),
-                MakeFailedTx(resolved: true),
-                MakeFailedTx(resolved: false)
+                MakeFailedTx(status: FailedTransactionStatus.Pending),
+                MakeFailedTx(status: FailedTransactionStatus.Recovered),
+                MakeFailedTx(status: FailedTransactionStatus.Pending)
             );
             await ctx.SaveChangesAsync();
         }
 
         await using var readCtx = db.CreateContext();
         var unresolved = await readCtx.FailedTransactions
-            .Where(ft => !ft.Resolved)
+            .Where(ft => ft.Status == FailedTransactionStatus.Pending)
             .ToListAsync();
 
         Assert.Equal(2, unresolved.Count);
