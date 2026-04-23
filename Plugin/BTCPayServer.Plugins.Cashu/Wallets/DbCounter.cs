@@ -10,7 +10,7 @@ using DotNut;
 using DotNut.Abstractions;
 using Microsoft.EntityFrameworkCore;
 
-namespace BTCPayServer.Plugins.Cashu.CashuAbstractions;
+namespace BTCPayServer.Plugins.Cashu.Wallets;
 
 public class DbCounter : ICounter
 {

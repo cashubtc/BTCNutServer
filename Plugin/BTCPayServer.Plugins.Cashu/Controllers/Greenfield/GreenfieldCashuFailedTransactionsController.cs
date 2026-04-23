@@ -4,8 +4,8 @@ using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Client;
+using BTCPayServer.Plugins.Cashu.Controllers.Greenfield.DTOs;
 using BTCPayServer.Plugins.Cashu.Data;
-using BTCPayServer.Plugins.Cashu.Models;
 using BTCPayServer.Plugins.Cashu.Data.Models;
 using BTCPayServer.Plugins.Cashu.Services;
 using BTCPayServer.Services.Invoices;
@@ -33,6 +33,8 @@ public class GreenfieldCashuFailedTransactionsController(
 
         var transactions = await db.FailedTransactions
             .Where(ft => ft.StoreId == storeId)
+            .Where(ft => ft.Status != FailedTransactionStatus.Dismissed)
+            .OrderByDescending(ft => ft.CreatedAt)
             .ToListAsync();
 
         return Ok(transactions.Select(ToResponse));
@@ -52,9 +54,13 @@ public class GreenfieldCashuFailedTransactionsController(
             return this.CreateAPIError(404, "failed-transaction-not-found", "The failed transaction was not found.");
         }
 
-        if (failedTransaction.Resolved)
+        if (failedTransaction.Status == FailedTransactionStatus.Recovered)
         {
             return Ok(ToResponse(failedTransaction));
+        }
+        if (failedTransaction.Status == FailedTransactionStatus.Dismissed)
+        {
+            return this.CreateAPIError(409, "failed-transaction-dismissed", "The failed transaction is dismissed.");
         }
 
         var invoice = await invoiceRepository.GetInvoice(failedTransaction.InvoiceId);
@@ -63,7 +69,7 @@ public class GreenfieldCashuFailedTransactionsController(
             return this.CreateAPIError(404, "invoice-not-found",
                 "Invoice associated with this transaction was not found.");
         }
-        CashuPaymentService.PollResult pollResult;
+        PollResult pollResult;
         try
         {
             pollResult = await failedTransactionsPoller.PollTransaction(failedTransaction);
@@ -85,6 +91,29 @@ public class GreenfieldCashuFailedTransactionsController(
         return Ok(ToResponse(failedTransaction));
     }
 
+    [HttpDelete("~/api/v1/stores/{storeId}/cashu/failed-transactions/{failedTransactionId}")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Greenfield)]
+    public async Task<IActionResult> DismissFailedTransaction(string storeId, Guid failedTransactionId)
+    {
+        await using var db = cashuDbContextFactory.CreateContext();
+
+        var failedTransaction = await db.FailedTransactions
+            .SingleOrDefaultAsync(t => t.Id == failedTransactionId && t.StoreId == storeId);
+
+        if (failedTransaction is null)
+        {
+            return this.CreateAPIError(404, "failed-transaction-not-found", "The failed transaction was not found.");
+        }
+
+        failedTransaction.Status = FailedTransactionStatus.Dismissed;
+        failedTransaction.ReasonCode = FailedTransactionReasons.DismissedByUser;
+        failedTransaction.Details = FailedTransactionReasons.Describe(FailedTransactionReasons.DismissedByUser);
+        failedTransaction.DismissedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(ToResponse(failedTransaction));
+    }
+
     private static FailedTransactionResponseDto ToResponse(FailedTransaction t) => new(
         Id: t.Id,
         InvoiceId: t.InvoiceId,
@@ -92,9 +121,13 @@ public class GreenfieldCashuFailedTransactionsController(
         Unit: t.Unit,
         InputAmount: t.InputAmount,
         OperationType: t.OperationType.ToString(),
+        CreatedAt: t.CreatedAt,
         RetryCount: t.RetryCount,
         LastRetried: t.LastRetried,
-        Resolved: t.Resolved,
+        Status: t.Status.ToString(),
+        CanRetry: t.CanRetryManually,
+        CanDismiss: t.CanDismiss,
+        ReasonCode: t.ReasonCode,
         Details: t.Details
     );
 }

@@ -2,7 +2,7 @@ using BTCPayServer.Payments;
 using BTCPayServer.Payments.Bitcoin;
 using BTCPayServer.Services;
 
-namespace BTCPayServer.Plugins.Cashu.PaymentHandlers;
+namespace BTCPayServer.Plugins.Cashu.PaymentMethod;
 
 public class CashuCheckoutModelExtension(DisplayFormatter displayFormatter)
     : ICheckoutModelExtension

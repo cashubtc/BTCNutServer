@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using BTCPayServer.Plugins.Cashu.Data.enums;
 
-namespace BTCPayServer.Plugins.Cashu.PaymentHandlers;
+namespace BTCPayServer.Plugins.Cashu.PaymentMethod;
 
 public class CashuPaymentMethodConfig
 {

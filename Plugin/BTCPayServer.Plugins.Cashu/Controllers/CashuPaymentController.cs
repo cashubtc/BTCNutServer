@@ -42,7 +42,7 @@ public class CashuPaymentController : Controller
             {
                 throw new InvalidTokenException();
             }
-            await _cashuPaymentService.ProcessPaymentAsync(decodedToken, invoiceId);
+            await _cashuPaymentService.ProcessPaymentAsync(decodedToken!, invoiceId);
         }
         catch (CashuPaymentException cex)
         {

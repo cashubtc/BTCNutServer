@@ -4,10 +4,11 @@ using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Hosting;
 using BTCPayServer.Lightning;
 using BTCPayServer.Payments;
-using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.Lightning;
 using BTCPayServer.Plugins.Cashu.PaymentHandlers;
+using BTCPayServer.Plugins.Cashu.PaymentMethod;
+using BTCPayServer.Plugins.Cashu.Wallets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -39,7 +40,11 @@ public class CashuPlugin : BaseBTCPayServerPlugin
         //Cashu Singletons
         services.AddSingleton<MintManager>();
         services.AddSingleton<CashuStatusProvider>();
+        services.AddSingleton<CashuPaymentRegistrar>();
+        services.AddSingleton<CashuMeltHandler>();
+        services.AddSingleton<CashuSwapHandler>();
         services.AddSingleton<CashuPaymentService>();
+        services.AddSingleton<PendingCashuPaymentProcessor>();
         services.AddSingleton<RestoreService>();
         services.AddSingleton<StatefulWalletFactory>();
         services.AddSingleton<MintListener>();
@@ -66,6 +71,7 @@ public class CashuPlugin : BaseBTCPayServerPlugin
         services.AddHostedService(s => s.GetRequiredService<RestoreService>());
         services.AddHostedService(s => s.GetRequiredService<MintListener>());
         services.AddHostedService(s => s.GetRequiredService<FailedTransactionsPoller>());
+        services.AddHostedService(s => s.GetRequiredService<PendingCashuPaymentProcessor>());
 
         services.AddSingleton<ISwaggerProvider, CashuSwaggerProvider>();
 

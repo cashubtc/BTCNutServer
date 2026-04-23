@@ -1,7 +1,7 @@
 @using BTCPayServer.Abstractions.Extensions
 @using BTCPayServer.Plugins.Cashu
-@using BTCPayServer.Plugins.Cashu.Data.Models
-@model List<BTCPayServer.Plugins.Cashu.Data.Models.FailedTransaction>
+@using BTCPayServer.Plugins.Cashu.ViewModels
+@model FailedTransactionsViewModel
 @{
     ViewData.SetLayoutModel(new LayoutModel(CashuPlugin.PluginNavKey, "Interrupted Transactions") { SubMenuItemId = "Configuration" });
 }
@@ -9,29 +9,101 @@
 <h2 class="mb-2 mb-lg-3">@ViewData["Title"]</h2>
 <partial name="_StatusMessage" />
 
-<div class="table-responsive">
-    <table class="table table-hover">
-        <thead class="table-light">
-        <td>InvoiceId</td>
-        <td>Mint Url</td>
-        <td>Unit</td>
-        <td>Proof Amount</td>
-        <td>Operation</td>
-        <td> </td>
-        </thead>
-        @foreach(var item in Model)
+@if (!Model.Transactions.Any())
+{
+    <div class="alert alert-info mb-0">No interrupted transactions.</div>
+}
+else
+{
+    <div class="d-flex flex-column gap-3">
+        @foreach (var item in Model.Transactions)
         {
-            <form method="POST">
-                <input type="hidden" name="FailedTransactionID" value="@item.Id">
-                <tr>
-                    <td>@item.Id</td>
-                    <td>@item.MintUrl</td>
-                    <td>@item.Unit</td>
-                    <td>@item.InputAmount</td>
-                    <td>@(item.OperationType==OperationType.Swap ? "Swap" : "Melt")</td>
-                    <td><button type="submit" class="btn btn-link p-0">Poll</button><td>
-                </tr>
-            </form>
+            var collapseId = $"failed-tx-{item.FailedTransactionId:N}";
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-start gap-3">
+                        <div class="flex-grow-1">
+                            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                                <span class="fw-semibold">@item.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span>
+                                <span class="badge @(item.Status switch
+                                                     {
+                                                         "Recovered" => "bg-success-subtle text-success",
+                                                         "NeedsManualReview" => "bg-warning-subtle text-warning-emphasis",
+                                                         "FailedTerminal" => "bg-danger-subtle text-danger",
+                                                         _ => "bg-info-subtle text-info-emphasis"
+                                                     })">
+                                    @item.Status
+                                </span>
+                                <span class="badge bg-secondary-subtle text-secondary-emphasis">@item.OperationLabel</span>
+                            </div>
+
+                            <div class="mb-1">
+                                <span class="text-muted">Invoice</span>
+                                <div class="fw-semibold text-break">@item.InvoiceId</div>
+                            </div>
+
+                            <div class="small text-muted d-flex flex-wrap gap-3">
+                                <span>Amount: @item.InputAmount @item.Unit</span>
+                                <span>Retries: @item.RetryCount</span>
+                                @if (!string.IsNullOrWhiteSpace(item.ReasonLabel))
+                                {
+                                    <span>@item.ReasonLabel</span>
+                                }
+                                <span class="text-break">Mint: @item.MintUrl</span>
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2 align-items-start">
+                            <button class="btn btn-link px-0" type="button" data-bs-toggle="collapse" data-bs-target="#@collapseId" aria-expanded="false" aria-controls="@collapseId">
+                                Details
+                            </button>
+                            @if (item.CanRetry)
+                            {
+                                <form method="post" class="m-0">
+                                    <input type="hidden" name="failedTransactionId" value="@item.FailedTransactionId" />
+                                    <button type="submit" class="btn btn-outline-primary btn-sm">Retry</button>
+                                </form>
+                            }
+                            @if (item.CanDismiss)
+                            {
+                                <form method="post" action="@Url.Action("DismissFailedTransaction", "UICashuWallet", new { storeId = Model.StoreId, failedTransactionId = item.FailedTransactionId })" class="m-0">
+                                    <button type="submit" class="btn btn-outline-secondary btn-sm">Dismiss</button>
+                                </form>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="collapse mt-3" id="@collapseId">
+                        <div class="border-top pt-3 small">
+                            <dl class="row mb-0">
+                                <dt class="col-sm-3">Created</dt>
+                                <dd class="col-sm-9">@item.CreatedAt.ToLocalTime().ToString("F")</dd>
+
+                                <dt class="col-sm-3">Last Attempt</dt>
+                                <dd class="col-sm-9">@item.LastRetried.ToLocalTime().ToString("F")</dd>
+
+                                <dt class="col-sm-3">Status</dt>
+                                <dd class="col-sm-9">@item.Status</dd>
+
+                                <dt class="col-sm-3">Failed Tx ID</dt>
+                                <dd class="col-sm-9 text-break">@item.FailedTransactionId</dd>
+
+                                <dt class="col-sm-3">Invoice ID</dt>
+                                <dd class="col-sm-9 text-break">@item.InvoiceId</dd>
+
+                                <dt class="col-sm-3">Reason Code</dt>
+                                <dd class="col-sm-9 text-break">@(item.ReasonCode ?? "n/a")</dd>
+
+                                <dt class="col-sm-3">Mint</dt>
+                                <dd class="col-sm-9 text-break">@item.MintUrl</dd>
+
+                                <dt class="col-sm-3">Details</dt>
+                                <dd class="col-sm-9 text-break">@(string.IsNullOrWhiteSpace(item.Details) ? "No details available." : item.Details)</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+            </div>
         }
-    </table>
-</div>
+    </div>
+}

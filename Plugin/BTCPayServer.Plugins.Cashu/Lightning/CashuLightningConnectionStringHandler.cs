@@ -2,8 +2,8 @@ using System;
 using System.Linq;
 using AngleSharp.Common;
 using BTCPayServer.Lightning;
-using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.Data;
+using BTCPayServer.Plugins.Cashu.Services;
 using NBitcoin;
 
 namespace BTCPayServer.Plugins.Cashu.Lightning;

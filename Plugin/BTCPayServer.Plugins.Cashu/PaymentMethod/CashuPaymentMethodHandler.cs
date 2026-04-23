@@ -13,7 +13,7 @@ using NBitcoin;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace BTCPayServer.Plugins.Cashu.PaymentHandlers;
+namespace BTCPayServer.Plugins.Cashu.PaymentMethod;
 
 public class CashuPaymentMethodHandler(
     BTCPayNetworkProvider networkProvider,
@@ -109,7 +109,8 @@ public class CashuPaymentMethodHandler(
 
 public class CashuPaymentData
 {
-    // for now let's keep it as simple as possible.
+    public bool PendingSettlement { get; set; }
+    public string? LightningInvoiceId { get; set; }
 }
 
 public class CashuPaymentMethodDetails
