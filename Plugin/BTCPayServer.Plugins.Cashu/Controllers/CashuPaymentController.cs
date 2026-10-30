@@ -91,9 +91,10 @@ public class CashuPaymentController : Controller
                 || payload.Mint == null
                 || payload.Unit == null
                 || payload.Proofs == null
+                || payload.Proofs.Length == 0
             )
             {
-                throw new ArgumentException("Required fields are missing in the payload.");
+                return BadRequest("Payment Error: Required fields are missing in the payload.");
             }
 
             var token = new CashuToken
@@ -108,6 +109,10 @@ public class CashuPaymentController : Controller
 
             await _cashuPaymentService.ProcessPaymentAsync(token, payload.PaymentId);
             return Ok("Payment sent!");
+        }
+        catch (JsonException)
+        {
+            return BadRequest("Payment Error: Malformed payload.");
         }
         catch (CashuPaymentException cex)
         {

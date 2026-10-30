@@ -489,5 +489,28 @@ namespace BTCPayserver.Plugins.Cashu.Tests
             Assert.Equal(decimal.MinValue, minAmount);
         }
         #endregion
+
+        #region FilterProofsByKeysets Tests
+
+        [Fact]
+        public void FilterProofsByKeysets_KeepsOnlyProofsOfMintKeysets()
+        {
+            const string fullV2 = "015ba18a8adcd02e715a58358eb618da4a4b3791151a4bee5e968bb88406ccf76a";
+            var mintKeysets = new List<KeysetId> { new("009a1f293253e41e"), new(fullV2) };
+            Proof MakeProof(ulong amount, string id) =>
+                new() { Amount = amount, Id = new KeysetId(id), Secret = new StringSecret("s"), C = AnyPubKey };
+            var proofs = new List<Proof>
+            {
+                MakeProof(1, "009a1f293253e41e"),
+                MakeProof(2, fullV2[..16]),
+                MakeProof(4, "00ffffffffffffff"),
+                MakeProof(8, "01ffffffffffffff"),
+            };
+
+            var kept = CashuUtils.FilterProofsByKeysets(proofs, mintKeysets);
+
+            Assert.Equal(new ulong[] { 1, 2 }, kept.Select(p => p.Amount));
+        }
+        #endregion
     }
 }
