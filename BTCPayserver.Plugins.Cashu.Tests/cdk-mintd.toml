@@ -1,0 +1,21 @@
+[info]
+url = "http://cdk-mint:3338"
+listen_host = "0.0.0.0"
+listen_port = 3338
+mnemonic = "env:CDK_MINTD_MNEMONIC"
+input_fee_ppk = 100
+
+[mint_info]
+name = "CDK test mint"
+
+[database]
+engine = "sqlite"
+
+[payment_backend]
+backend = "lnd"
+unit = "sat"
+
+[lnd]
+address = "https://mint_lnd:10009"
+cert_file = "/lnd/tls.cert"
+macaroon_file = "/lnd/data/chain/bitcoin/regtest/admin.macaroon"
