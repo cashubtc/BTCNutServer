@@ -299,6 +299,23 @@ public static class CashuUtils
         public ulong SumProofs => Proofs?.Select(p => p.Amount).Sum() ?? 0;
     }
 
+    /// <summary>
+    /// Keeps only proofs whose keyset belongs to the mint. Short (16 char) v2 ids match by prefix, as in NUT-02.
+    /// </summary>
+    public static List<Proof> FilterProofsByKeysets(List<Proof> proofs, IReadOnlyCollection<KeysetId> keysetIds)
+    {
+        return proofs
+            .Where(p =>
+                p.Id is not null
+                && keysetIds.Any(k =>
+                    k == p.Id
+                    || (p.Id.ToString().Length == 16
+                        && k.ToString().StartsWith(p.Id.ToString(), StringComparison.OrdinalIgnoreCase))
+                )
+            )
+            .ToList();
+    }
+
     public static bool TryDecodeToken(string token, out CashuToken? cashuToken)
     {
         if (string.IsNullOrEmpty(token))

@@ -285,17 +285,20 @@ services:
     expose:
       - "3338"
     environment:
-      CDK_MINTD_LN_BACKEND: lnd
-      CDK_MINTD_LND_ADDRESS: https://mint_lnd:10009
-      CDK_MINTD_LND_MACAROON_FILE: /lnd/data/chain/bitcoin/regtest/admin.macaroon
-      CDK_MINTD_LND_CERT_FILE: /lnd/tls.cert
-      CDK_MINTD_LISTEN_HOST: 0.0.0.0
-      CDK_MINTD_LISTEN_PORT: 3338
       CDK_MINTD_MNEMONIC: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
-      CDK_MINTD_DATABASE: sqlite
-      CDK_MINTD_INPUT_FEE_PPK: 100
+    # Since 0.18 config lives in the mint DB and must be imported once; CDK_MINTD_* overrides are ignored at runtime.
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        set -e;
+        mkdir -p /var/lib/cdk-mintd;
+        cdk-mintd --work-dir /var/lib/cdk-mintd config show >/dev/null 2>&1 ||
+        cdk-mintd --work-dir /var/lib/cdk-mintd config init --new-mint --file /etc/cdk-mintd/config.toml;
+        exec cdk-mintd --work-dir /var/lib/cdk-mintd
     volumes:
       - "mint_lnd_datadir:/lnd"
+      - "./cdk-mintd.toml:/etc/cdk-mintd/config.toml:ro"
     depends_on:
       mint_lnd:
         condition: service_healthy

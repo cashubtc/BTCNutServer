@@ -79,6 +79,30 @@ public class CashuPaymentService(
         );
 
         var simplifiedToken = CashuUtils.SimplifyToken(token);
+        var wallet = await statefulWalletFactory.CreateAsync(
+            storeData.Id,
+            simplifiedToken.Mint,
+            simplifiedToken.Unit
+        );
+
+        // Must happen before the amount check, otherwise ignored proofs would be credited to the invoice.
+        var mintKeysetIds = (await wallet.GetKeysets())?.Select(k => k.Id).ToList() ?? [];
+        var knownProofs = CashuUtils.FilterProofsByKeysets(simplifiedToken.Proofs, mintKeysetIds);
+        if (knownProofs.Count != simplifiedToken.Proofs.Count)
+        {
+            logs.PayServer.LogDebug(
+                "(Cashu) Ignoring {Count} proof(s) with keysets unknown to mint {MintUrl} for invoice {InvoiceId}",
+                simplifiedToken.Proofs.Count - knownProofs.Count,
+                simplifiedToken.Mint,
+                invoiceId
+            );
+        }
+        if (knownProofs.Count == 0)
+        {
+            throw new CashuPaymentException("None of the provided proofs belong to this mint's keysets.");
+        }
+        simplifiedToken.Proofs = knownProofs;
+
         var providedAmount = simplifiedToken.SumProofs * singleUnitSatoshiWorth;
 
         if (providedAmount < invoiceAmount)
@@ -99,11 +123,6 @@ public class CashuPaymentService(
             invoiceAmount.Satoshi
         );
 
-        var wallet = await statefulWalletFactory.CreateAsync(
-            storeData.Id,
-            simplifiedToken.Mint,
-            simplifiedToken.Unit
-        );
         var ctx = new CashuOperationContext(
             wallet,
             invoice,
